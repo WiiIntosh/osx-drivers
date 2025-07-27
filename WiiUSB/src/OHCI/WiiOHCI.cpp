@@ -206,6 +206,12 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
     return status;
   }
 
+  status = initBulkEDs();
+  if (status != kIOReturnSuccess) {
+    WIISYSLOG("Failed to configure bulk EDs");
+    return status;
+  }
+
   status = initInterruptEDs();
   if (status != kIOReturnSuccess) {
     WIISYSLOG("Failed to configure interrupt EDs");
@@ -229,7 +235,7 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
   //
   ohciControl = readReg32(kOHCIRegControl) & ~(kOHCIRegControlFuncStateMask);
   ohciControl |= kOHCIRegControlFuncStateOperational | kOHCIRegControlCBSRMask | ohciRemoteWakeup;
-  ohciControl |= kOHCIRegControlPeriodicListEnable | kOHCIRegControlControlListEnable;
+  ohciControl |= kOHCIRegControlPeriodicListEnable | kOHCIRegControlControlListEnable | kOHCIRegControlBulkListEnable;
   writeReg32(kOHCIRegControl, ohciControl);
   IOSleep(100);
 

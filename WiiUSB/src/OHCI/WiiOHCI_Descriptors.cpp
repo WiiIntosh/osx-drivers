@@ -289,6 +289,51 @@ IOReturn WiiOHCI::initControlEDs(void) {
 }
 
 //
+// Initializes the bulk endpoint linked list.
+//
+IOReturn WiiOHCI::initBulkEDs(void) {
+  //
+  // Create the tail ED.
+  //
+  _edBulkTailPtr = getFreeEndpointDescriptor();
+  if (_edBulkTailPtr == NULL) {
+    return kIOReturnNoMemory;
+  }
+
+  //
+  // Controller is to skip the tail ED, with this ED being the end of the list.
+  //
+  _edBulkTailPtr->ep.flags          = HostToUSBLong(kOHCIEDFlagsSkip);
+  _edBulkTailPtr->ep.nextEDPhysAddr = HostToUSBLong(0);
+  _edBulkTailPtr->nextED            = NULL;
+  flushEndpointDescriptor(_edBulkTailPtr);
+
+  //
+  // Create the head ED.
+  //
+  _edBulkHeadPtr = getFreeEndpointDescriptor();
+  if (_edBulkHeadPtr == NULL) {
+    return kIOReturnNoMemory;
+  }
+
+  //
+  // Controller is to skip the head ED, points to the tail ED.
+  //
+  _edBulkHeadPtr->ep.flags          = HostToUSBLong(kOHCIEDFlagsSkip);
+  _edBulkHeadPtr->ep.nextEDPhysAddr = HostToUSBLong(_edBulkTailPtr->physAddr);
+  _edBulkHeadPtr->nextED            = _edBulkTailPtr;
+  flushEndpointDescriptor(_edBulkHeadPtr);
+
+  //
+  // Configure controller.
+  //
+  writeReg32(kOHCIRegBulkCurrentED, 0);
+  writeReg32(kOHCIRegBulkHeadED, _edBulkHeadPtr->physAddr);
+
+  return kIOReturnSuccess;
+}
+
+//
 // Initializes the interrupt endpoint tree and HCCA area.
 //
 IOReturn WiiOHCI::initInterruptEDs(void) {
@@ -355,14 +400,14 @@ OHCIEndpointDescriptor *WiiOHCI::getEndpoint(UInt8 functionNumber, UInt8 endpoin
                                              UInt8 *type, OHCIEndpointDescriptor **outPrevEndpoint) {
   OHCIEndpointDescriptor  *currEndpointDesc;
   OHCIEndpointDescriptor  *prevEndpointDesc;
-  UInt32                  endpointId;        
-  
+  UInt32                  endpointId;
+
   //
   // Search for control endpoint.
   //
   if (*type & kWiiOHCIEndpointTypeControl) {
     endpointId = (functionNumber & kOHCIEDFlagsFuncMask) | (((UInt32)endpointNumber << kOHCIEDFlagsEndpointShift) & kOHCIEDFlagsEndpointMask);
-    
+
     prevEndpointDesc = _edControlHeadPtr;
     currEndpointDesc = prevEndpointDesc->nextED;
     while (currEndpointDesc != NULL) {
@@ -371,6 +416,31 @@ OHCIEndpointDescriptor *WiiOHCI::getEndpoint(UInt8 functionNumber, UInt8 endpoin
       //
       if ((USBToHostLong(currEndpointDesc->ep.flags) & (kOHCIEDFlagsFuncMask | kOHCIEDFlagsEndpointMask)) == endpointId) {
         *type = kWiiOHCIEndpointTypeControl;
+        if (outPrevEndpoint != NULL) {
+          *outPrevEndpoint = prevEndpointDesc;
+        }
+        return currEndpointDesc;
+      }
+
+      prevEndpointDesc = currEndpointDesc;
+      currEndpointDesc = prevEndpointDesc->nextED;
+    }
+  }
+
+  //
+  // Search for bulk endpoint.
+  //
+  if (*type & kWiiOHCIEndpointTypeBulk) {
+    endpointId = (functionNumber & kOHCIEDFlagsFuncMask) | (((UInt32)endpointNumber << kOHCIEDFlagsEndpointShift) & kOHCIEDFlagsEndpointMask);
+
+    prevEndpointDesc = _edBulkHeadPtr;
+    currEndpointDesc = prevEndpointDesc->nextED;
+    while (currEndpointDesc != NULL) {
+      //
+      // Check if current endpoint descriptor matches.
+      //
+      if ((USBToHostLong(currEndpointDesc->ep.flags) & (kOHCIEDFlagsFuncMask | kOHCIEDFlagsEndpointMask)) == endpointId) {
+        *type = kWiiOHCIEndpointTypeBulk;
         if (outPrevEndpoint != NULL) {
           *outPrevEndpoint = prevEndpointDesc;
         }

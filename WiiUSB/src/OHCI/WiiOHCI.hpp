@@ -70,6 +70,10 @@ private:
   OHCIEndpointDescriptor    *_edControlHeadPtr;
   OHCIEndpointDescriptor    *_edControlTailPtr;
 
+  // Bulk endpoints.
+  OHCIEndpointDescriptor    *_edBulkHeadPtr;
+  OHCIEndpointDescriptor    *_edBulkTailPtr;
+
   // Interrupt endpoints.
   OHCIEndpointDescriptor    *_edInterrupts[kWiiOHCIInterruptNodeCount];
 
@@ -139,6 +143,7 @@ private:
   void returnTransferDescriptor(OHCITransferDescriptor *transferDesc);
 
   IOReturn initControlEDs(void);
+  IOReturn initBulkEDs(void);
   IOReturn initInterruptEDs(void);
   OHCIEndpointDescriptor *getEndpoint(UInt8 functionNumber, UInt8 endpointNumber, UInt8 direction,
                                       UInt8 *type, OHCIEndpointDescriptor **outPrevEndpoint = NULL);

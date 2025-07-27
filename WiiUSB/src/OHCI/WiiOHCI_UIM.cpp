@@ -363,8 +363,13 @@ IOReturn WiiOHCI::UIMCreateControlTransfer(short functionNumber, short endpointN
 // This function is gated and called within the workloop context.
 //
 IOReturn WiiOHCI::UIMCreateBulkEndpoint(UInt8 functionNumber, UInt8 endpointNumber, UInt8 direction, UInt8 speed, UInt8 maxPacketSize) {
-WIIDBGLOG("start");
-return kIOReturnUnsupported;
+  WIISYSLOG("F: %d, EP: %u, spd: %s, psz: %u", functionNumber, endpointNumber,
+    (speed == kUSBDeviceSpeedFull) ? "full" : "low", maxPacketSize);
+
+  //
+  // Add a new bulk endpoint descriptor.
+  //
+  return addNewEndpoint(functionNumber, endpointNumber, maxPacketSize, speed, kUSBAnyDirn, _edBulkHeadPtr);
 }
 
 //
@@ -377,8 +382,39 @@ return kIOReturnUnsupported;
 //
 IOReturn WiiOHCI::UIMCreateBulkTransfer(short functionNumber, short endpointNumber, IOUSBCompletion completion,
                                         IOMemoryDescriptor *CBP, bool bufferRounding, UInt32 bufferSize, short direction) {
-WIIDBGLOG("start");
-return kIOReturnUnsupported;
+  OHCIEndpointDescriptor  *endpointDesc;
+  UInt8                   endpointType;
+  UInt32                  flags;
+
+  WIISYSLOG("F: %d, EP: %u, dir: %d, sz: %u", functionNumber, endpointNumber, direction, bufferSize);
+
+  //
+  // Locate the bulk endpoint.
+  //
+  endpointType = kWiiOHCIEndpointTypeBulk;
+  endpointDesc = getEndpoint(functionNumber, endpointNumber, direction, &endpointType);
+  if (endpointDesc == NULL) {
+    WIIDBGLOG("Endpoint not found");
+    return kIOUSBEndpointNotFound;
+  }
+
+  flags = 0;
+  if (direction == kUSBOut) {
+    flags |= kOHCIGenTDFlagsDirectionOut;
+  } else if (direction == kUSBIn) {
+    flags |= kOHCIGenTDFlagsDirectionIn;
+  } else {
+    flags |= kOHCIGenTDFlagsDirectionSetup;
+  }
+  if (bufferRounding) {
+    flags |= kOHCIGenTDFlagsBufferRounding;
+  }
+
+  //
+  // Submit the bulk transfer.
+  //
+  return doGeneralTransfer(endpointDesc, kOHCITransferDescriptorTypeBulk,
+    completion, CBP, bufferSize, flags, kOHCIRegCmdStatusBulkListFilled);
 }
 
 //
