@@ -1,0 +1,21 @@
+{
+    "configurations": [
+        {
+            "name": "Kext",
+            "includePath": [
+                "./MacPPCKernelSDK/Headers",
+                "./include"
+            ],
+            "defines": [
+                "KERNEL",
+                "__BIG_ENDIAN__",
+                "DEBUG"
+            ],
+            "intelliSenseMode": "linux-gcc-x64",
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c17",
+            "cppStandard": "gnu++17"
+        }
+    ],
+    "version": 4
+}
