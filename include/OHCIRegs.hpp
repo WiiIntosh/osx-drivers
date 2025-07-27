@@ -319,11 +319,14 @@ typedef struct OHCITransferDescriptor {
   UInt8       descType;
   UInt8       pad[3];
 
-  // Temporary buffer for this transfer descriptor.
+  // Temporary buffer descriptor for this transfer descriptor.
   IOMemoryDescriptor        *tmpBuffer;
+  // Temporary buffer physical address.
+  UInt32                    tmpBufferPhysAddr;
+  // Temporary buffer pointer mapped into kernel memory.
   void                      *tmpBufferPtr;
   // Used buffer size.
-  UInt32                    bufferSize;
+  UInt32                    actualBufferSize;
   // Original buffer descriptor.
   IOMemoryDescriptor        *srcBuffer;
 
@@ -337,7 +340,7 @@ typedef struct OHCITransferDescriptor {
   // Isochronous frame number.
   UInt32              isoFrameNum;
 
-  UInt32 padding[4];
+  UInt32 padding[3];
 } OHCITransferDescriptor;
 
 #define kOHCITransferDescriptorTypeControl      0

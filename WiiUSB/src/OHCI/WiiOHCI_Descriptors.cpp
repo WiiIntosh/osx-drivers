@@ -155,18 +155,32 @@ IOReturn WiiOHCI::allocateDescriptors(void) {
         return kIOReturnNoResources;
       }
       transferDescs[i].tmpBuffer = IOMemoryDescriptor::withPhysicalAddress(mem2PhysAddr, kWiiOHCITempBufferSize, kIODirectionInOut);
-      if (transferDescs[i].tmpBuffer == NULL) { // TODO: see if Wii U even needs this
+      if (transferDescs[i].tmpBuffer == NULL) {
         WIIDBGLOG("Failed to allocate a buffer");
         return kIOReturnNoResources;
       }
       transferDescs[i].tmpBufferPtr = (void*) transferDescs[i].tmpBuffer->map(kIOMapInhibitCache)->getVirtualAddress();
+
+    //
+    // Wii U still needs double buffers due to cache requirements, but can be in any memory location.
+    //
     } else {
       transferDescs[i].tmpBuffer = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous, kWiiOHCITempBufferSize, kWiiOHCITempBufferSize);
-      if (transferDescs[i].tmpBuffer == NULL) { // TODO: see if Wii U even needs this
-        WIIDBGLOG("Failed to allocate a buffer");
+      if (transferDescs[i].tmpBuffer == NULL) {
+        WIISYSLOG("Failed to allocate transfer descriptor double buffer");
         return kIOReturnNoResources;
       }
-      transferDescs[i].tmpBufferPtr = ((IOBufferMemoryDescriptor*) transferDescs[i].tmpBuffer)->getBytesNoCopy();
+
+      //
+      // Get physical address.
+      //
+      if (_memoryCursor->getPhysicalSegments(transferDescs[i].tmpBuffer, 0, &seg, 1, kWiiOHCITempBufferSize) != 1) {
+        WIISYSLOG("Failed to get transfer descriptor double buffer address");
+        return kIOReturnNoResources;
+      }
+
+      transferDescs[i].tmpBufferPhysAddr = seg.location;
+      transferDescs[i].tmpBufferPtr      = ((IOBufferMemoryDescriptor*) transferDescs[i].tmpBuffer)->getBytesNoCopy();
     }
 
     //

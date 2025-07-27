@@ -16,7 +16,7 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
                                     IOMemoryDescriptor *buffer, UInt32 bufferSize, UInt32 flags, UInt32 cmdBits) {
   OHCITransferDescriptor    *currTD;
   OHCITransferDescriptor    *newTailTD;
-  IOPhysicalSegment         seg;
+  IOByteCount               tdBufferSize;
   IOByteCount               offset;
 
   //
@@ -24,7 +24,7 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
   //
   invalidateDataCache(&endpointDesc->ep.headTDPhysAddr, sizeof (endpointDesc->ep.headTDPhysAddr));
   if (USBToHostLong(endpointDesc->ep.headTDPhysAddr) & kOHCIEDTDHeadHalted) {
-    WIIDBGLOG("Pipe is stalled");
+    WIISYSLOG("Pipe is stalled");
     return kIOUSBPipeStalled;
   }
 
@@ -32,14 +32,6 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
   flags |= ((kOHCITDConditionCodeNotAccessed << kOHCIGenTDFlagsConditionCodeShift) & kOHCIGenTDFlagsConditionCodeMask);
 
   if (bufferSize > 0) {
-    //
-    // TODO:
-    //
-    if (bufferSize > kWiiOHCITempBufferSize) {
-      WIISYSLOG("TODO too big a transfer 0x%X", bufferSize);
-      while (true);
-    }
-
     //
     // Create transfer descriptors for buffer.
     //
@@ -50,7 +42,7 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
       //
       newTailTD = getFreeTransferDescriptor();
       if (newTailTD == NULL) {
-        WIIDBGLOG("Failed to allocate new TD");
+        WIISYSLOG("Failed to allocate new TD");
         return kIOReturnNoMemory;
       }
       newTailTD->td.nextTDPhysAddr = 0;
@@ -62,28 +54,24 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
       //
       currTD = endpointDesc->tailTD;
 
-      if (_memoryCursor->getPhysicalSegments(currTD->tmpBuffer, 0, &seg, 1, (bufferSize > kWiiOHCITempBufferSize) ? kWiiOHCITempBufferSize : bufferSize) != 1) {
-        WIIDBGLOG("DMA error");
-        return kIOReturnDMAError;
-      }
-
-      currTD->srcBuffer = IOMemoryDescriptor::withSubRange(buffer, offset, seg.length, kIODirectionInOut);
+      tdBufferSize = (bufferSize > kWiiOHCITempBufferSize) ? kWiiOHCITempBufferSize : bufferSize;
+      currTD->srcBuffer = IOMemoryDescriptor::withSubRange(buffer, offset, tdBufferSize, kIODirectionInOut);
       if (currTD->srcBuffer == NULL) {
-        WIIDBGLOG("DMA failed to make the subdesc");
+        WIISYSLOG("Failed to get sub memory descriptor");
         return kIOReturnDMAError;
       }
 
       //
-      // Copy data to scratch descriptor.
+      // Copy data to scratch descriptor. TODO: Only do this if needed.
       // This is located in MEM2, MEM1 buffers can work but seem to have issues with non-aligned buffers and buffers not a multiple of 4.
       //
-      if (currTD->srcBuffer->readBytes(0, currTD->tmpBufferPtr, seg.length) != seg.length) {
-        WIIDBGLOG("DMA didn't copy them all");
+      if (currTD->srcBuffer->readBytes(0, currTD->tmpBufferPtr, tdBufferSize) != tdBufferSize) {
+        WIISYSLOG("Failed to copy all bytes into double buffer");
         return kIOReturnDMAError;
       }
       flushDataCache(currTD->tmpBufferPtr, kWiiOHCITempBufferSize);
-      
-      offset += seg.length;
+
+      offset += tdBufferSize;
       if (offset >= bufferSize) {
         currTD->td.flags       = HostToUSBLong(flags);
         currTD->completion.gen = completion;
@@ -92,10 +80,10 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
         bzero(&currTD->completion.gen, sizeof (currTD->completion.gen));
       }
 
-      currTD->td.currentBufferPtrPhysAddr = HostToUSBLong(seg.location);
+      currTD->td.currentBufferPtrPhysAddr = HostToUSBLong(currTD->tmpBufferPhysAddr);
       currTD->td.nextTDPhysAddr           = HostToUSBLong(newTailTD->physAddr);
-      currTD->td.bufferEndPhysAddr        = HostToUSBLong(seg.location + seg.length - 1);
-      currTD->bufferSize                  = seg.length;
+      currTD->td.bufferEndPhysAddr        = HostToUSBLong(currTD->tmpBufferPhysAddr + tdBufferSize - 1);
+      currTD->actualBufferSize            = tdBufferSize;
       currTD->nextTD                      = newTailTD;
       currTD->descType                    = type;
       flushTransferDescriptor(currTD);
@@ -107,7 +95,7 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
       endpointDesc->tailTD            = newTailTD;
       endpointDesc->ep.tailTDPhysAddr = HostToUSBLong(newTailTD->physAddr);
       flushDataCache(&endpointDesc->ep.tailTDPhysAddr, sizeof (endpointDesc->ep.tailTDPhysAddr));
-      WIIDBGLOG("Added gen TD phys 0x%X, next 0x%X, buf 0x%X, fr 0x%X", currTD->physAddr, newTailTD->physAddr, seg.location, readReg32(kOHCIRegFmNumber));
+      WIIDBGLOG("Added gen TD phys 0x%X, next 0x%X, buf 0x%X, fr 0x%X", currTD->physAddr, newTailTD->physAddr, currTD->tmpBufferPhysAddr, readReg32(kOHCIRegFmNumber));
       writeReg32(kOHCIRegCmdStatus, cmdBits);
     }
   } else {
@@ -118,7 +106,7 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
     //
     newTailTD = getFreeTransferDescriptor();
     if (newTailTD == NULL) {
-      WIIDBGLOG("Failed to allocate new TD");
+      WIISYSLOG("Failed to allocate new TD");
       return kIOReturnNoMemory;
     }
     newTailTD->td.nextTDPhysAddr = 0;
@@ -131,7 +119,7 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
     currTD->td.currentBufferPtrPhysAddr = 0;
     currTD->td.bufferEndPhysAddr        = 0;
     currTD->td.nextTDPhysAddr           = HostToUSBLong(newTailTD->physAddr);
-    currTD->bufferSize                  = 0;
+    currTD->actualBufferSize            = 0;
     currTD->completion.gen              = completion;
     currTD->nextTD                      = newTailTD;
     currTD->descType                    = type;
@@ -204,14 +192,14 @@ void WiiOHCI::completeTransferQueue(UInt32 headPhysAddr) {
           bufferSizeRemaining = USBToHostLong(currTD->td.bufferEndPhysAddr) - USBToHostLong(currTD->td.currentBufferPtrPhysAddr);
         }
 
-        if (currTD->bufferSize != 0) {
-          WIIDBGLOG("Completing a transfer %u bytes (%u bytes left), en 0x%X", currTD->bufferSize, bufferSizeRemaining, USBToHostLong(currTD->td.bufferEndPhysAddr));
+        if (currTD->actualBufferSize != 0) {
+          WIIDBGLOG("Completing a transfer %u bytes (%u bytes left), en 0x%X", currTD->actualBufferSize, bufferSizeRemaining, USBToHostLong(currTD->td.bufferEndPhysAddr));
           invalidateDataCache(currTD->tmpBufferPtr, kWiiOHCITempBufferSize);
 
-          currTD->srcBuffer->writeBytes(0, currTD->tmpBufferPtr, currTD->bufferSize);
+          currTD->srcBuffer->writeBytes(0, currTD->tmpBufferPtr, currTD->actualBufferSize);
 
           UInt64 tmp[3] = { 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
-          currTD->srcBuffer->readBytes(0, tmp, (currTD->bufferSize > sizeof (tmp)) ? sizeof (tmp) : currTD->bufferSize);
+          currTD->srcBuffer->readBytes(0, tmp, (currTD->actualBufferSize > sizeof (tmp)) ? sizeof (tmp) : currTD->actualBufferSize);
           WIIDBGLOG("0x%016llX%016llX%016llX", tmp[0], tmp[1], tmp[2]);
          // IOSleep(500);
 
