@@ -75,9 +75,10 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
       if (offset >= bufferSize) {
         currTD->td.flags       = HostToUSBLong(flags);
         currTD->completion.gen = completion;
+        currTD->lastDescriptor = 1;
       } else {
         currTD->td.flags = HostToUSBLong(flags & ~(kOHCIGenTDFlagsBufferRounding));
-        bzero(&currTD->completion.gen, sizeof (currTD->completion.gen));
+        currTD->lastDescriptor = 0;
       }
 
       currTD->td.currentBufferPtrPhysAddr = HostToUSBLong(currTD->tmpBufferPhysAddr);
@@ -120,9 +121,11 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
     currTD->td.bufferEndPhysAddr        = 0;
     currTD->td.nextTDPhysAddr           = HostToUSBLong(newTailTD->physAddr);
     currTD->actualBufferSize            = 0;
+    currTD->srcBuffer                   = NULL;
     currTD->completion.gen              = completion;
     currTD->nextTD                      = newTailTD;
     currTD->descType                    = type;
+    currTD->lastDescriptor              = 1;
     flushTransferDescriptor(currTD);
 
     //
@@ -183,9 +186,18 @@ void WiiOHCI::completeTransferQueue(UInt32 headPhysAddr) {
       // TODO
     } else {
       //
+      // Copy data back into original buffer.
+      //
+      if (currTD->srcBuffer != NULL) {
+        invalidateDataCache(currTD->tmpBufferPtr, currTD->actualBufferSize);
+        currTD->srcBuffer->writeBytes(0, currTD->tmpBufferPtr, currTD->actualBufferSize);
+        currTD->srcBuffer->release();
+      }
+
+      //
       // Invoke completion if present.
       //
-      if (currTD->completion.gen.action != NULL) {
+      if (currTD->lastDescriptor) {
         if (USBToHostLong(currTD->td.currentBufferPtrPhysAddr) == 0) {
           bufferSizeRemaining = 0;
         } else {
@@ -194,16 +206,6 @@ void WiiOHCI::completeTransferQueue(UInt32 headPhysAddr) {
 
         if (currTD->actualBufferSize != 0) {
           WIIDBGLOG("Completing a transfer %u bytes (%u bytes left), en 0x%X", currTD->actualBufferSize, bufferSizeRemaining, USBToHostLong(currTD->td.bufferEndPhysAddr));
-          invalidateDataCache(currTD->tmpBufferPtr, kWiiOHCITempBufferSize);
-
-          currTD->srcBuffer->writeBytes(0, currTD->tmpBufferPtr, currTD->actualBufferSize);
-
-          UInt64 tmp[3] = { 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL };
-          currTD->srcBuffer->readBytes(0, tmp, (currTD->actualBufferSize > sizeof (tmp)) ? sizeof (tmp) : currTD->actualBufferSize);
-          WIIDBGLOG("0x%016llX%016llX%016llX", tmp[0], tmp[1], tmp[2]);
-         // IOSleep(500);
-
-          currTD->srcBuffer->release();
         } else {
           WIIDBGLOG("Completing a transfer with no data");
         }

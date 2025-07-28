@@ -317,7 +317,10 @@ typedef struct OHCITransferDescriptor {
   struct OHCITransferDescriptor *nextTD;
   // Type of descriptor.
   UInt8       descType;
-  UInt8       pad[3];
+  // Is last descriptor in chain.
+  UInt8       lastDescriptor;
+  // Padding.
+  UInt8       pad[2];
 
   // Temporary buffer descriptor for this transfer descriptor.
   IOMemoryDescriptor        *tmpBuffer;
