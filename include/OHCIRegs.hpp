@@ -222,6 +222,14 @@ typedef struct OHCIEndpointDescriptor {
 OSCompileAssert((sizeof (OHCIEndpointDescriptor) % 0x10) == 0);
 
 //
+// OHCI interrupt endpoint table structure.
+//
+typedef struct {
+  OHCIEndpointDescriptor  *headED;
+  OHCIEndpointDescriptor  *tailED;
+} OHCIIntEndpoint;
+
+//
 // OHCI endpoint descriptor flags.
 //
 #define kOHCIEDFlagsFuncMask        BITRange(0, 6)
@@ -317,8 +325,8 @@ typedef struct OHCITransferDescriptor {
   struct OHCITransferDescriptor *nextTD;
   // Type of descriptor.
   UInt8       descType;
-  // Is last descriptor in chain.
-  UInt8       lastDescriptor;
+  // Descriptor flags (internal).
+  UInt8       descFlags;
   // Padding.
   UInt8       pad[2];
 
@@ -350,6 +358,8 @@ typedef struct OHCITransferDescriptor {
 #define kOHCITransferDescriptorTypeInterrupt    1
 #define kOHCITransferDescriptorTypeBulk         2
 #define kOHCITransferDescriptorTypeIsochronous  3
+
+#define kOHCITransferDescriptorFlagsLastTD      BIT0
 
 OSCompileAssert(sizeof (IOUSBCompletion) == 12);
 OSCompileAssert(sizeof (IOUSBIsocCompletion) == 12);

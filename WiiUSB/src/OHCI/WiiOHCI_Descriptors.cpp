@@ -357,21 +357,21 @@ IOReturn WiiOHCI::initInterruptEDs(void) {
   // later allocated endpoints are various poll timings.
   //
   for (unsigned int i = 0; i < kWiiOHCIInterruptNodeCount; i++) {
-    _edInterrupts[i] = getFreeEndpointDescriptor();
-    if (_edInterrupts[i] == NULL) {
+    _edInterrupts[i].headED = getFreeEndpointDescriptor();
+    if (_edInterrupts[i].headED == NULL) {
       return kIOReturnNoMemory;
     }
 
-    _edInterrupts[i]->ep.flags          = HostToUSBLong(kOHCIEDFlagsSkip);
-    _edInterrupts[i]->ep.nextEDPhysAddr = HostToUSBLong(0);
-    _edInterrupts[i]->nextED            = NULL;
-    flushEndpointDescriptor(_edInterrupts[i]);
+    _edInterrupts[i].headED->ep.flags          = HostToUSBLong(kOHCIEDFlagsSkip);
+    _edInterrupts[i].headED->ep.nextEDPhysAddr = HostToUSBLong(0);
+    _edInterrupts[i].headED->nextED            = NULL;
+    flushEndpointDescriptor(_edInterrupts[i].headED);
 
     //
     // First 32 will be static heads in the HCCA.
     //
     if (i < ARRSIZE(_hccaPtr->interruptTablePhysAddr)) {
-      _hccaPtr->interruptTablePhysAddr[i] = HostToUSBLong(_edInterrupts[i]->physAddr);
+      _hccaPtr->interruptTablePhysAddr[i] = HostToUSBLong(_edInterrupts[i].headED->physAddr);
     }
   }
   flushDataCache(_hccaPtr->interruptTablePhysAddr, sizeof (_hccaPtr->interruptTablePhysAddr));
@@ -399,10 +399,13 @@ IOReturn WiiOHCI::initInterruptEDs(void) {
     //
     // Link endpoint descriptors together.
     //
-    _edInterrupts[i]->ep.nextEDPhysAddr = HostToUSBLong(_edInterrupts[z]->physAddr);
-    _edInterrupts[i]->nextED            = _edInterrupts[z];
-    flushEndpointDescriptor(_edInterrupts[i]);
+    _edInterrupts[i].headED->ep.nextEDPhysAddr = HostToUSBLong(_edInterrupts[z].headED->physAddr);
+    _edInterrupts[i].headED->nextED            = _edInterrupts[z].headED;
+    _edInterrupts[i].tailED                    = _edInterrupts[i].headED->nextED;
+    flushEndpointDescriptor(_edInterrupts[i].headED);
   }
+
+  // TODO: isochronous endpoint chain
 
   return kIOReturnSuccess;
 }
@@ -424,7 +427,7 @@ OHCIEndpointDescriptor *WiiOHCI::getEndpoint(UInt8 functionNumber, UInt8 endpoin
 
     prevEndpointDesc = _edControlHeadPtr;
     currEndpointDesc = prevEndpointDesc->nextED;
-    while (currEndpointDesc != NULL) {
+    while (currEndpointDesc != _edControlTailPtr) {
       //
       // Check if current endpoint descriptor matches.
       //
@@ -449,7 +452,7 @@ OHCIEndpointDescriptor *WiiOHCI::getEndpoint(UInt8 functionNumber, UInt8 endpoin
 
     prevEndpointDesc = _edBulkHeadPtr;
     currEndpointDesc = prevEndpointDesc->nextED;
-    while (currEndpointDesc != NULL) {
+    while (currEndpointDesc != _edBulkTailPtr) {
       //
       // Check if current endpoint descriptor matches.
       //
@@ -478,10 +481,10 @@ OHCIEndpointDescriptor *WiiOHCI::getEndpoint(UInt8 functionNumber, UInt8 endpoin
     }
 
     for (unsigned int i = 0; i < ARRSIZE(_edInterrupts); i++) {
-      currEndpointDesc = _edInterrupts[i]->nextED;
-      prevEndpointDesc = _edInterrupts[i];
+      currEndpointDesc = _edInterrupts[i].headED->nextED;
+      prevEndpointDesc = _edInterrupts[i].headED;
 
-      while (currEndpointDesc != NULL) {
+      while (currEndpointDesc != _edInterrupts[i].tailED) {
         if ((USBToHostLong(currEndpointDesc->ep.flags) & (kOHCIEDFlagsFuncMask | kOHCIEDFlagsEndpointMask | kOHCIEDFlagsDirectionMask)) == endpointId) {
           *type = kWiiOHCIEndpointTypeInterrupt;
           if (outPrevEndpoint != NULL) {
@@ -513,17 +516,17 @@ OHCIEndpointDescriptor *WiiOHCI::getInterruptEDHead(UInt8 pollingRate) {
   if (pollingRate < 1) {
     return NULL;
   } else if (pollingRate < 2) {
-    return _edInterrupts[62]; // 1ms.
+    return _edInterrupts[62].headED; // 1ms.
   } else if (pollingRate < 4) {
-    return _edInterrupts[60 + (frameNumber % 2)]; // 2ms.
+    return _edInterrupts[60 + (frameNumber % 2)].headED; // 2ms.
   } else if (pollingRate < 8) {
-    return _edInterrupts[56 + (frameNumber % 4)]; // 4ms.
+    return _edInterrupts[56 + (frameNumber % 4)].headED; // 4ms.
   } else if (pollingRate < 16) {
-    return _edInterrupts[48 + (frameNumber % 8)]; // 8ms.
+    return _edInterrupts[48 + (frameNumber % 8)].headED; // 8ms.
   } else if (pollingRate < 32) {
-    return _edInterrupts[32 + (frameNumber % 16)]; // 16ms.
+    return _edInterrupts[32 + (frameNumber % 16)].headED; // 16ms.
   } else {
-    return _edInterrupts[frameNumber % 32]; // 32ms.
+    return _edInterrupts[frameNumber % 32].headED; // 32ms.
   }
 }
 
@@ -651,6 +654,10 @@ void WiiOHCI::removeEndpointTransferDescriptors(OHCIEndpointDescriptor *endpoint
 
     WIIDBGLOG("Unlinking TD phys 0x%X", currTD->physAddr);
 
+    if (currTD->srcBuffer != NULL) {
+      currTD->srcBuffer->release();
+    }
+
     if (currTD->descType == kOHCITransferDescriptorTypeIsochronous) {
       // TODO
     } else {
@@ -666,7 +673,7 @@ void WiiOHCI::removeEndpointTransferDescriptors(OHCIEndpointDescriptor *endpoint
       //
       // Invoke completion for final transfer descriptor.
       //
-      if (currTD->completion.gen.action != NULL) {
+      if (currTD->descFlags & kOHCITransferDescriptorFlagsLastTD) {
         Complete(currTD->completion.gen, kIOReturnAborted, bufferSizeRemaining);
         bufferSizeRemaining = 0;
       }

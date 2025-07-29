@@ -34,10 +34,10 @@
 //
 // Endpoint type masks.
 //
-#define kWiiOHCIEndpointTypeControl             BIT1
-#define kWiiOHCIEndpointTypeInterrupt           BIT2
-#define kWiiOHCIEndpointTypeBulk                BIT3
-#define kWiiOHCIEndpointTypeIsochronous         BIT4
+#define kWiiOHCIEndpointTypeControl             BIT0
+#define kWiiOHCIEndpointTypeInterrupt           BIT1
+#define kWiiOHCIEndpointTypeBulk                BIT2
+#define kWiiOHCIEndpointTypeIsochronous         BIT3
 #define kWiiOHCIEndpointTypeAll                 BITRange(0, 4)
 
 //
@@ -75,7 +75,7 @@ private:
   OHCIEndpointDescriptor    *_edBulkTailPtr;
 
   // Interrupt endpoints.
-  OHCIEndpointDescriptor    *_edInterrupts[kWiiOHCIInterruptNodeCount];
+  OHCIIntEndpoint           _edInterrupts[kWiiOHCIInterruptNodeCount];
 
   // HCCA.
   IOPhysicalAddress           _hccaPhysAddr;

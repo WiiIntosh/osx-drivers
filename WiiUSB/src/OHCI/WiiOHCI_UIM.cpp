@@ -22,7 +22,7 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
   //
   // Ensure the endpoint is not halted.
   //
-  invalidateDataCache(&endpointDesc->ep.headTDPhysAddr, sizeof (endpointDesc->ep.headTDPhysAddr));
+  invalidateEndpointDescriptor(endpointDesc);
   if (USBToHostLong(endpointDesc->ep.headTDPhysAddr) & kOHCIEDTDHeadHalted) {
     WIISYSLOG("Pipe is stalled");
     return kIOUSBPipeStalled;
@@ -75,10 +75,10 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
       if (offset >= bufferSize) {
         currTD->td.flags       = HostToUSBLong(flags);
         currTD->completion.gen = completion;
-        currTD->lastDescriptor = 1;
+        currTD->descFlags      = kOHCITransferDescriptorFlagsLastTD;
       } else {
-        currTD->td.flags = HostToUSBLong(flags & ~(kOHCIGenTDFlagsBufferRounding));
-        currTD->lastDescriptor = 0;
+        currTD->td.flags       = HostToUSBLong(flags & ~(kOHCIGenTDFlagsBufferRounding));
+        currTD->descFlags      = 0;
       }
 
       currTD->td.currentBufferPtrPhysAddr = HostToUSBLong(currTD->tmpBufferPhysAddr);
@@ -125,7 +125,7 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
     currTD->completion.gen              = completion;
     currTD->nextTD                      = newTailTD;
     currTD->descType                    = type;
-    currTD->lastDescriptor              = 1;
+    currTD->descFlags                   = kOHCITransferDescriptorFlagsLastTD;
     flushTransferDescriptor(currTD);
 
     //
@@ -197,7 +197,7 @@ void WiiOHCI::completeTransferQueue(UInt32 headPhysAddr) {
       //
       // Invoke completion if present.
       //
-      if (currTD->lastDescriptor) {
+      if (currTD->descFlags & kOHCITransferDescriptorFlagsLastTD) {
         if (USBToHostLong(currTD->td.currentBufferPtrPhysAddr) == 0) {
           bufferSizeRemaining = 0;
         } else {
