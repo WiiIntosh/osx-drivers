@@ -636,6 +636,7 @@ void WiiOHCI::removeEndpointTransferDescriptors(OHCIEndpointDescriptor *endpoint
   //
   // Get the current head and remove entire chain.
   //
+  invalidateEndpointDescriptor(endpointDesc);
   currTD = getTDFromPhysMapping(USBToHostLong(endpointDesc->ep.headTDPhysAddr) & kOHCIEDTDHeadMask);
   endpointDesc->headTD            = endpointDesc->tailTD;
   endpointDesc->ep.headTDPhysAddr = endpointDesc->ep.tailTDPhysAddr;
@@ -651,11 +652,12 @@ void WiiOHCI::removeEndpointTransferDescriptors(OHCIEndpointDescriptor *endpoint
       WIISYSLOG("Got an invalid TD here");
       return;
     }
+    invalidateTransferDescriptor(currTD);
 
     WIIDBGLOG("Unlinking TD phys 0x%X", currTD->physAddr);
 
     if (currTD->srcBuffer != NULL) {
-      currTD->srcBuffer->release();
+      OSSafeReleaseNULL(currTD->srcBuffer);
     }
 
     if (currTD->descType == kOHCITransferDescriptorTypeIsochronous) {
@@ -665,9 +667,7 @@ void WiiOHCI::removeEndpointTransferDescriptors(OHCIEndpointDescriptor *endpoint
       // No data actually was transfered, so need to account for all buffers in the chain.
       //
       if (USBToHostLong(currTD->td.currentBufferPtrPhysAddr) != 0) {
-        bufferSizeRemaining = 0;
-      } else {
-        bufferSizeRemaining = USBToHostLong(currTD->td.bufferEndPhysAddr) - USBToHostLong(currTD->td.currentBufferPtrPhysAddr);
+        bufferSizeRemaining += USBToHostLong(currTD->td.bufferEndPhysAddr) - USBToHostLong(currTD->td.currentBufferPtrPhysAddr) + 1;
       }
 
       //
@@ -679,7 +679,7 @@ void WiiOHCI::removeEndpointTransferDescriptors(OHCIEndpointDescriptor *endpoint
       }
     }
 
-    nextTD = currTD->nextTD;
+    nextTD = getTDFromPhysMapping(USBToHostLong(currTD->td.nextTDPhysAddr));
     returnTransferDescriptor(currTD);
     currTD = nextTD;
   }
