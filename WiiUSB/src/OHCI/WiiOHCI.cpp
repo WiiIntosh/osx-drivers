@@ -21,6 +21,10 @@ bool WiiOHCI::init(OSDictionary *dictionary) {
   _interruptEventSource   = NULL;
   _physMappingHeadPtr     = NULL;
 
+  _freeEDHeadPtr     = NULL;
+  _freeTDHeadPtr     = NULL;
+  _freeMem2TDHeadPtr = NULL;
+
   _rootHubInterruptTransLock = IOLockAlloc();
   if (_rootHubInterruptTransLock == NULL) {
     return false;
@@ -117,15 +121,6 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
   if (_memoryCursor == NULL) {
     WIISYSLOG("Failed to create memory cursor");
     return kIOReturnNoResources;
-  }
-
-  //
-  // Allocate initialize descriptors.
-  //
-  status = allocateDescriptors();
-  if (status != kIOReturnSuccess) {
-    WIISYSLOG("Failed to allocate descriptors with status 0x%X", status);
-    return status;
   }
 
   //

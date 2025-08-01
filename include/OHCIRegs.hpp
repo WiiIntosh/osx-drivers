@@ -187,9 +187,9 @@ struct OHCITransferDescriptor;
 //
 // OHCI endpoint descriptor.
 //
-// This structure must be 16-byte aligned.
+// This structure must be 32-byte aligned for cache requirements.
 //
-#define kOHCIEndpointDescriptorAlignment    0x10
+#define kOHCIEndpointDescriptorAlignment    0x20
 typedef struct OHCIEndpointDescriptor {
   //
   // OHCI controller data (16 bytes).
@@ -359,7 +359,8 @@ typedef struct OHCITransferDescriptor {
 #define kOHCITransferDescriptorTypeBulk         2
 #define kOHCITransferDescriptorTypeIsochronous  3
 
-#define kOHCITransferDescriptorFlagsLastTD      BIT0
+#define kOHCITransferDescriptorFlagsMem2        BIT0
+#define kOHCITransferDescriptorFlagsLastTD      BIT1
 
 OSCompileAssert(sizeof (IOUSBCompletion) == 12);
 OSCompileAssert(sizeof (IOUSBIsocCompletion) == 12);

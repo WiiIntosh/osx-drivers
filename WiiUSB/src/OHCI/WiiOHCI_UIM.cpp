@@ -42,9 +42,8 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
       //
       // Allocate a new tail transfer descriptor.
       //
-      newTailTD = getFreeTransferDescriptor();
+      newTailTD = getFreeTransferDescriptor(false);
       if (newTailTD == NULL) {
-        WIISYSLOG("Failed to allocate new TD");
         return kIOReturnNoMemory;
       }
       newTailTD->td.nextTDPhysAddr = 0;
@@ -78,10 +77,10 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
       if (offset >= bufferSize) {
         currTD->td.flags       = HostToUSBLong(flags);
         currTD->completion.gen = completion;
-        currTD->descFlags      = kOHCITransferDescriptorFlagsLastTD;
+        currTD->descFlags      |= kOHCITransferDescriptorFlagsLastTD;
       } else {
         currTD->td.flags       = HostToUSBLong(flags & ~(kOHCIGenTDFlagsBufferRounding));
-        currTD->descFlags      = 0;
+        currTD->descFlags      &= ~(kOHCITransferDescriptorFlagsLastTD);
       }
 
       currTD->td.currentBufferPtrPhysAddr = HostToUSBLong(currTD->tmpBufferPhysAddr);
@@ -128,7 +127,7 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
     currTD->completion.gen              = completion;
     currTD->nextTD                      = newTailTD;
     currTD->descType                    = type;
-    currTD->descFlags                   = kOHCITransferDescriptorFlagsLastTD;
+    currTD->descFlags                   |= kOHCITransferDescriptorFlagsLastTD;
     flushTransferDescriptor(currTD);
 
     //

@@ -58,13 +58,12 @@ private:
   //
   // Descriptors.
   //
-  IOBufferMemoryDescriptor  *_initialEDBuffer;
-  IOBufferMemoryDescriptor  *_initialTDBuffer;
   OHCIPhysicalMapping       *_physMappingHeadPtr;
 
-  // Free endpoints.
+  // Free descriptors.
   OHCIEndpointDescriptor    *_freeEDHeadPtr;
   OHCITransferDescriptor    *_freeTDHeadPtr;
+  OHCITransferDescriptor    *_freeMem2TDHeadPtr;
 
   // Control endpoints.
   OHCIEndpointDescriptor    *_edControlHeadPtr;
@@ -136,9 +135,10 @@ private:
   IOReturn convertTDStatus(UInt8 ohciStatus);
   IOReturn createPhysTDMapping(OHCITransferDescriptor *transferDesc);
   OHCITransferDescriptor *getTDFromPhysMapping(UInt32 physAddr);
-  IOReturn allocateDescriptors(void);
+  OHCIEndpointDescriptor *allocateEndpointDescriptor(void);
+  OHCITransferDescriptor *allocateTransferDescriptor(bool requireMem2);
   OHCIEndpointDescriptor *getFreeEndpointDescriptor(void);
-  OHCITransferDescriptor *getFreeTransferDescriptor(void);
+  OHCITransferDescriptor *getFreeTransferDescriptor(bool requireMem2);
   void returnEndpointDescriptor(OHCIEndpointDescriptor *endpointDesc);
   void returnTransferDescriptor(OHCITransferDescriptor *transferDesc);
 

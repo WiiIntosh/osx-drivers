@@ -75,125 +75,105 @@ OHCITransferDescriptor *WiiOHCI::getTDFromPhysMapping(UInt32 physAddr) {
 }
 
 //
-// Allocates the initial endpoint and transfer descriptors.
+// Allocates an endpoint descriptor.
 //
-IOReturn WiiOHCI::allocateDescriptors(void) {
-  OHCIEndpointDescriptor      *endpointDescs;
-  OHCITransferDescriptor      *transferDescs;
-  IOPhysicalSegment           seg;
-  IORangeScalar               mem2PhysAddr;
-  IOReturn                    status;
+OHCIEndpointDescriptor *WiiOHCI::allocateEndpointDescriptor(void) {
+  IOBufferMemoryDescriptor  *buffer;
+  OHCIEndpointDescriptor    *endpointDesc;
+  IOPhysicalSegment         seg;
+
+  buffer = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous, sizeof (OHCIEndpointDescriptor), kOHCIEndpointDescriptorAlignment);
+  if (buffer == NULL) {
+    return NULL;
+  } // TODO: We do lose track of the underlying descriptor, but we never free these anyway.
+  endpointDesc = (OHCIEndpointDescriptor *) buffer->getBytesNoCopy();
 
   //
-  // Create buffers.
+  // Get the physical address.
   //
-  _initialEDBuffer  = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous,
-    sizeof (OHCIEndpointDescriptor) * kWiiOHCIInitialNumEDs, kOHCIEndpointDescriptorAlignment);
-  _initialTDBuffer = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous,
-    sizeof (OHCITransferDescriptor) * kWiiOHCIInitialNumTDs, kOHCITransferDescriptorAlignment);
+  if (_memoryCursor->getPhysicalSegments(buffer, 0, &seg, 1, sizeof (OHCIEndpointDescriptor)) != 1) {
+    return NULL;
+  }
+  if (seg.length != sizeof (OHCIEndpointDescriptor)) { // TODO: Is this even possible.
+    WIIDBGLOG("Too small segment here");
+    return NULL;
+  }
+  endpointDesc->physAddr = seg.location;
 
-  if ((_initialEDBuffer == NULL) || (_initialTDBuffer == NULL)) {
-    WIISYSLOG("Failed to create desc buffers");
-    return kIOReturnNoResources;
+  return endpointDesc;
+}
+
+//
+// Allocates a transfer descriptor.
+//
+OHCITransferDescriptor *WiiOHCI::allocateTransferDescriptor(bool requireMem2) {
+  IOBufferMemoryDescriptor  *buffer;
+  OHCITransferDescriptor    *transferDesc;
+  IORangeScalar             mem2PhysAddr;
+  IOPhysicalSegment         seg;
+  IOReturn                  status;
+
+  buffer = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous, sizeof (OHCITransferDescriptor), kOHCITransferDescriptorAlignment);
+  if (buffer == NULL) {
+    WIISYSLOG("Failed to allocate new TD");
+    return NULL;
+  } // TODO: We do lose track of the underlying descriptor, but we never free these anyway.
+  transferDesc = (OHCITransferDescriptor *) buffer->getBytesNoCopy();
+
+  //
+  // Get the physical address.
+  //
+  if (_memoryCursor->getPhysicalSegments(buffer, 0, &seg, 1, sizeof (OHCITransferDescriptor)) != 1) {
+    return NULL;
+  }
+  if (seg.length != sizeof (OHCITransferDescriptor)) { // TODO: Is this even possible.
+    WIIDBGLOG("Too small segment here");
+    return NULL;
+  }
+  transferDesc->physAddr = seg.location;
+  status = createPhysTDMapping(transferDesc);
+  if (status != kIOReturnSuccess) {
+    return NULL;
   }
 
   //
-  // Configure endpoint descriptors, adding each one to the free list.
+  // Create temporary buffer mapping from MEM2 if on Wii.
+  // Some transfer descriptors will be created in MEM2 for the last one in a transfer.
   //
-  endpointDescs = (OHCIEndpointDescriptor *) _initialEDBuffer->getBytesNoCopy();
-  for (int i = 0; i < kWiiOHCIInitialNumEDs; i++) {
-    //
-    // Get the physical address.
-    //
-    if (_memoryCursor->getPhysicalSegments(_initialEDBuffer, i * sizeof (endpointDescs[i]), &seg, 1, sizeof (endpointDescs[i])) != 1) {
-      return kIOReturnDMAError;
+  if (requireMem2 && (_mem2Allocator != NULL)) {
+    if (!_mem2Allocator->allocate(kWiiOHCITempBufferSize, &mem2PhysAddr, kOHCITransferDescriptorAlignment)) {
+      return NULL;
     }
-    if (seg.length != sizeof (endpointDescs[i])) { // TODO: Is this even possible.
-      WIIDBGLOG("Too small segment here");
-      return kIOReturnDMAError;
+    transferDesc->tmpBuffer = IOMemoryDescriptor::withPhysicalAddress(mem2PhysAddr, kWiiOHCITempBufferSize, kIODirectionInOut);
+    if (transferDesc->tmpBuffer == NULL) {
+      WIIDBGLOG("Failed to allocate a buffer");
+      return NULL;
     }
-    endpointDescs[i].physAddr = seg.location;
+    transferDesc->tmpBufferPtr = (void*) transferDesc->tmpBuffer->map(kIOMapInhibitCache)->getVirtualAddress();
+
+  //
+  // Wii U still needs double buffers due to cache requirements, but can be in any memory location.
+  //
+  } else {
+    transferDesc->tmpBuffer = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous, kWiiOHCITempBufferSize, kWiiOHCITempBufferSize);
+    if (transferDesc->tmpBuffer == NULL) {
+      WIISYSLOG("Failed to allocate transfer descriptor double buffer");
+      return NULL;
+    }
 
     //
-    // Add to linked list.
-    // No need to set the physical address, that will be set when the descriptor is used.
+    // Get physical address.
     //
-    if (i > 0) {
-      endpointDescs[i - 1].nextED = &endpointDescs[i];
+    if (_memoryCursor->getPhysicalSegments(transferDesc->tmpBuffer, 0, &seg, 1, kWiiOHCITempBufferSize) != 1) {
+      WIISYSLOG("Failed to get transfer descriptor double buffer address");
+      return NULL;
     }
+
+    transferDesc->tmpBufferPhysAddr = seg.location;
+    transferDesc->tmpBufferPtr      = ((IOBufferMemoryDescriptor*) transferDesc->tmpBuffer)->getBytesNoCopy();
   }
-  _freeEDHeadPtr = &endpointDescs[0];
 
-  //
-  // Configure transfer descriptors, adding each one to the free list.
-  // These can be used for either general transfers or isochronous.
-  //
-  transferDescs = (OHCITransferDescriptor *) _initialTDBuffer->getBytesNoCopy();
-  for (int i = 0; i < kWiiOHCIInitialNumTDs; i++) {
-    //
-    // Get the physical address.
-    //
-    if (_memoryCursor->getPhysicalSegments(_initialTDBuffer, i * sizeof (transferDescs[i]), &seg, 1, sizeof (transferDescs[i])) != 1) {
-      return kIOReturnDMAError;
-    }
-    if (seg.length != sizeof (transferDescs[i])) { // TODO: Is this even possible.
-      WIIDBGLOG("Too small segment here");
-      return kIOReturnDMAError;
-    }
-
-    transferDescs[i].physAddr = seg.location;
-    status = createPhysTDMapping(&transferDescs[i]);
-    if (status != kIOReturnSuccess) {
-      return status;
-    }
-
-    //
-    // Create temporary buffer mapping from MEM2 if on Wii.
-    //
-    if (_mem2Allocator != NULL) {
-      if (!_mem2Allocator->allocate(kWiiOHCITempBufferSize, &mem2PhysAddr, kOHCITransferDescriptorAlignment)) {
-        return kIOReturnNoResources;
-      }
-      transferDescs[i].tmpBuffer = IOMemoryDescriptor::withPhysicalAddress(mem2PhysAddr, kWiiOHCITempBufferSize, kIODirectionInOut);
-      if (transferDescs[i].tmpBuffer == NULL) {
-        WIIDBGLOG("Failed to allocate a buffer");
-        return kIOReturnNoResources;
-      }
-      transferDescs[i].tmpBufferPtr = (void*) transferDescs[i].tmpBuffer->map(kIOMapInhibitCache)->getVirtualAddress();
-
-    //
-    // Wii U still needs double buffers due to cache requirements, but can be in any memory location.
-    //
-    } else {
-      transferDescs[i].tmpBuffer = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous, kWiiOHCITempBufferSize, kWiiOHCITempBufferSize);
-      if (transferDescs[i].tmpBuffer == NULL) {
-        WIISYSLOG("Failed to allocate transfer descriptor double buffer");
-        return kIOReturnNoResources;
-      }
-
-      //
-      // Get physical address.
-      //
-      if (_memoryCursor->getPhysicalSegments(transferDescs[i].tmpBuffer, 0, &seg, 1, kWiiOHCITempBufferSize) != 1) {
-        WIISYSLOG("Failed to get transfer descriptor double buffer address");
-        return kIOReturnNoResources;
-      }
-
-      transferDescs[i].tmpBufferPhysAddr = seg.location;
-      transferDescs[i].tmpBufferPtr      = ((IOBufferMemoryDescriptor*) transferDescs[i].tmpBuffer)->getBytesNoCopy();
-    }
-
-    //
-    // Add to linked list.
-    // No need to set the physical address, that will be set when the descriptor is used.
-    //
-    if (i > 0) {
-      transferDescs[i - 1].nextTD = &transferDescs[i];
-    }
-  }
-  _freeTDHeadPtr = &transferDescs[0];
-
-  return kIOReturnSuccess;
+  return transferDesc;
 }
 
 //
@@ -204,8 +184,7 @@ OHCIEndpointDescriptor *WiiOHCI::getFreeEndpointDescriptor(void) {
 
   freeED = _freeEDHeadPtr;
   if (freeED == NULL) {
-    // TODO: Dynamic allocate new EDs.
-    return NULL;
+    return allocateEndpointDescriptor();
   }
 
   //
@@ -219,20 +198,33 @@ OHCIEndpointDescriptor *WiiOHCI::getFreeEndpointDescriptor(void) {
 //
 // Gets a free transfer descriptor from the free linked list.
 //
-OHCITransferDescriptor *WiiOHCI::getFreeTransferDescriptor(void) {
+OHCITransferDescriptor *WiiOHCI::getFreeTransferDescriptor(bool requireMem2) {
   OHCITransferDescriptor *freeTD;
 
-  freeTD = _freeTDHeadPtr;
-  if (freeTD == NULL) {
-    // TODO: Dynamic allocate new TDs.
-    return NULL;
+  if (requireMem2) {
+    freeTD = _freeMem2TDHeadPtr;
+    if (freeTD == NULL) {
+      return allocateTransferDescriptor(true);
+    }
+
+    //
+    // Adjust linkage for remaining free TDs.
+    //
+    _freeMem2TDHeadPtr = freeTD->nextTD;
+    freeTD->nextTD = NULL;
+  } else {
+    freeTD = _freeTDHeadPtr;
+    if (freeTD == NULL) {
+      return allocateTransferDescriptor(false);
+    }
+
+    //
+    // Adjust linkage for remaining free TDs.
+    //
+    _freeTDHeadPtr = freeTD->nextTD;
+    freeTD->nextTD = NULL;
   }
 
-  //
-  // Adjust linkage for remaining free TDs.
-  //
-  _freeTDHeadPtr = freeTD->nextTD;
-  freeTD->nextTD = NULL;
   return freeTD;
 }
 
@@ -253,8 +245,13 @@ void WiiOHCI::returnEndpointDescriptor(OHCIEndpointDescriptor *endpointDesc) {
 // Returns a transfer descriptor to the free linked list.
 //
 void WiiOHCI::returnTransferDescriptor(OHCITransferDescriptor *transferDesc) {
-  transferDesc->nextTD = _freeTDHeadPtr;
-  _freeTDHeadPtr = transferDesc;
+  if (transferDesc->descFlags & kOHCITransferDescriptorFlagsMem2) {
+    transferDesc->nextTD = _freeMem2TDHeadPtr;
+    _freeMem2TDHeadPtr = transferDesc;
+  } else {
+    transferDesc->nextTD = _freeTDHeadPtr;
+    _freeTDHeadPtr = transferDesc;
+  }
 }
 
 //
@@ -567,7 +564,7 @@ IOReturn WiiOHCI::addNewEndpoint(UInt8 functionNumber, UInt8 endpointNumber, UIn
   //
   // Create initial transfer descriptor.
   //
-  transferDesc = getFreeTransferDescriptor();
+  transferDesc = getFreeTransferDescriptor(false);
   if (transferDesc == NULL) {
     returnEndpointDescriptor(endpointDesc);
     return kIOReturnNoMemory;
