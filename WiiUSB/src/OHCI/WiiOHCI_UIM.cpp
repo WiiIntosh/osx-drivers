@@ -12,19 +12,18 @@
 //
 // This function is gated and called within the workloop context.
 //
-IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 type, IOUSBCompletion completion,
+IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointData *endpoint, UInt8 type, IOUSBCompletion completion,
                                     IOMemoryDescriptor *buffer, UInt32 bufferSize, UInt32 flags, UInt32 cmdBits) {
-  OHCITransferDescriptor    *currTD;
-  OHCITransferDescriptor    *newTailTD;
-  UInt32                    bufferRemaining;
-  UInt32                    tdBufferSize;
-  UInt32                    offset;
+  OHCITransferData  *currTransfer;
+  OHCITransferData  *tailTransfer;
+  UInt32            bufferRemaining;
+  UInt32            tdBufferSize;
+  UInt32            offset;
 
   //
   // Ensure the endpoint is not halted.
   //
-  invalidateEndpointDescriptor(endpointDesc);
-  if (USBToHostLong(endpointDesc->ep.headTDPhysAddr) & kOHCIEDTDHeadHalted) {
+  if (USBToHostLong(endpoint->ed->headTDPhysAddr) & kOHCIEDTDHeadHalted) {
     WIISYSLOG("Pipe is stalled");
     return kIOUSBPipeStalled;
   }
@@ -42,64 +41,58 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
       //
       // Allocate a new tail transfer descriptor.
       //
-      newTailTD = getFreeTransferDescriptor(false);
-      if (newTailTD == NULL) {
+      tailTransfer = getFreeTransfer(false);
+      if (tailTransfer == NULL) {
         return kIOReturnNoMemory;
       }
-      newTailTD->td.nextTDPhysAddr = 0;
-      newTailTD->nextTD            = NULL;
-      flushTransferDescriptor(newTailTD);
+      tailTransfer->td->nextTDPhysAddr = 0;
+      tailTransfer->nextTransfer       = NULL;
 
-      //
-      // Populate the current tail transfer descriptor.
-      //
-      currTD = endpointDesc->tailTD;
+      currTransfer = endpoint->tailTransfer;
 
       tdBufferSize = (bufferRemaining > kWiiOHCITempBufferSize) ? kWiiOHCITempBufferSize : bufferRemaining;
-      currTD->srcBuffer = IOMemoryDescriptor::withSubRange(buffer, offset, tdBufferSize, kIODirectionInOut);
-      if (currTD->srcBuffer == NULL) {
+      currTransfer->srcBuffer = IOMemoryDescriptor::withSubRange(buffer, offset, tdBufferSize, buffer->getDirection());
+      if (currTransfer->srcBuffer == NULL) {
         WIISYSLOG("Failed to get sub memory descriptor");
         return kIOReturnDMAError;
       }
 
       //
-      // Copy data to scratch descriptor. TODO: Only do this if needed.
-      // This is located in MEM2, MEM1 buffers can work but seem to have issues with non-aligned buffers and buffers not a multiple of 4.
+      // Copy data to bounce buffer if writing to a USB device.
+      // This is located in MEM2, MEM1 buffers can work but seem to have issues with non-aligned buffers
+      // and buffers not a multiple of 4 on Wii.
       //
-      if (currTD->srcBuffer->readBytes(0, currTD->tmpBufferPtr, tdBufferSize) != tdBufferSize) {
-        WIISYSLOG("Failed to copy all bytes into double buffer");
-        return kIOReturnDMAError;
+      if (currTransfer->srcBuffer->getDirection() & kIODirectionOut) {
+        if (currTransfer->srcBuffer->readBytes(0, currTransfer->tmpBufferPtr, tdBufferSize) != tdBufferSize) {
+          WIISYSLOG("Failed to copy all bytes into double buffer");
+          return kIOReturnDMAError;
+        }
       }
-      flushDataCache(currTD->tmpBufferPtr, kWiiOHCITempBufferSize);
 
       offset          += tdBufferSize;
       bufferRemaining -= tdBufferSize;
       if (offset >= bufferSize) {
-        currTD->td.flags       = HostToUSBLong(flags);
-        currTD->completion.gen = completion;
-        currTD->descFlags      |= kOHCITransferDescriptorFlagsLastTD;
+        currTransfer->td->flags      = HostToUSBLong(flags);
+        currTransfer->completion.gen = completion;
+        currTransfer->last           = true;
       } else {
-        currTD->td.flags       = HostToUSBLong(flags & ~(kOHCIGenTDFlagsBufferRounding));
-        currTD->descFlags      &= ~(kOHCITransferDescriptorFlagsLastTD);
+        currTransfer->td->flags      = HostToUSBLong(flags & ~(kOHCIGenTDFlagsBufferRounding));
+        currTransfer->last           = false;
       }
 
-      currTD->td.currentBufferPtrPhysAddr = HostToUSBLong(currTD->tmpBufferPhysAddr);
-      currTD->td.nextTDPhysAddr           = HostToUSBLong(newTailTD->physAddr);
-      currTD->td.bufferEndPhysAddr        = HostToUSBLong(currTD->tmpBufferPhysAddr + tdBufferSize - 1);
-      currTD->actualBufferSize            = tdBufferSize;
-      currTD->nextTD                      = newTailTD;
-      currTD->descType                    = type;
-      flushTransferDescriptor(currTD);
+      currTransfer->td->currentBufferPtrPhysAddr = HostToUSBLong(currTransfer->tmpBufferPhysAddr);
+      currTransfer->td->nextTDPhysAddr           = HostToUSBLong(tailTransfer->physAddr);
+      currTransfer->td->bufferEndPhysAddr        = HostToUSBLong(currTransfer->tmpBufferPhysAddr + tdBufferSize - 1);
+      currTransfer->actualBufferSize             = tdBufferSize;
+      currTransfer->nextTransfer                 = tailTransfer;
+      currTransfer->type                         = type;
 
-      //
-      // Make the newly allocated tail transfer descriptor the new tail,
-      // indicating to the host controller there is work to be done.
-      //
-      endpointDesc->tailTD            = newTailTD;
-      endpointDesc->ep.tailTDPhysAddr = HostToUSBLong(newTailTD->physAddr);
-      flushEndpointDescriptor(endpointDesc);
-      WIIDBGLOG("GenTD phys: 0x%X, next 0x%X, buf 0x%X, ep 0x%X, frm 0x%X", currTD->physAddr, USBToHostLong(currTD->td.nextTDPhysAddr),
-        USBToHostLong(currTD->td.currentBufferPtrPhysAddr), endpointDesc->physAddr, readReg32(kOHCIRegFmNumber));
+      WIIDBGLOG("GenTD phys: 0x%X, next 0x%X, buf 0x%X, ep 0x%X, frm 0x%X", currTransfer->physAddr, USBToHostLong(currTransfer->td->nextTDPhysAddr),
+        USBToHostLong(currTransfer->td->currentBufferPtrPhysAddr), endpoint->physAddr, readReg32(kOHCIRegFmNumber));
+
+      endpoint->tailTransfer       = tailTransfer;
+      endpoint->ed->tailTDPhysAddr = HostToUSBLong(tailTransfer->physAddr);
+      writeReg32(kOHCIRegCmdStatus, cmdBits);
     }
   } else {
     //
@@ -107,40 +100,34 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
     //
     // Allocate a new descriptor.
     //
-    newTailTD = getFreeTransferDescriptor();
-    if (newTailTD == NULL) {
+    tailTransfer = getFreeTransfer(false);
+    if (tailTransfer == NULL) {
       WIISYSLOG("Failed to allocate new TD");
       return kIOReturnNoMemory;
     }
-    newTailTD->td.nextTDPhysAddr = 0;
-    newTailTD->nextTD            = NULL;
-    flushTransferDescriptor(newTailTD);
+    tailTransfer->td->nextTDPhysAddr = 0;
+    tailTransfer->nextTransfer       = NULL;
 
-    currTD = endpointDesc->tailTD;
+    currTransfer = endpoint->tailTransfer;
 
-    currTD->td.flags                    = HostToUSBLong(flags);
-    currTD->td.currentBufferPtrPhysAddr = 0;
-    currTD->td.bufferEndPhysAddr        = 0;
-    currTD->td.nextTDPhysAddr           = HostToUSBLong(newTailTD->physAddr);
-    currTD->actualBufferSize            = 0;
-    currTD->srcBuffer                   = NULL;
-    currTD->completion.gen              = completion;
-    currTD->nextTD                      = newTailTD;
-    currTD->descType                    = type;
-    currTD->descFlags                   |= kOHCITransferDescriptorFlagsLastTD;
-    flushTransferDescriptor(currTD);
+    currTransfer->td->flags                    = HostToUSBLong(flags);
+    currTransfer->td->currentBufferPtrPhysAddr = 0;
+    currTransfer->td->bufferEndPhysAddr        = 0;
+    currTransfer->td->nextTDPhysAddr           = HostToUSBLong(tailTransfer->physAddr);
+    currTransfer->actualBufferSize             = 0;
+    currTransfer->srcBuffer                    = NULL;
+    currTransfer->completion.gen               = completion;
+    currTransfer->nextTransfer                 = tailTransfer;
+    currTransfer->type                         = type;
+    currTransfer->last                         = true;
+  
+    WIIDBGLOG("Added non-data gen TD phys 0x%X, next 0x%X", currTransfer->physAddr, USBToHostLong(currTransfer->td->nextTDPhysAddr));
 
-    //
-    // Make the newly allocated tail transfer descriptor the new tail,
-    // indicating to the host controller there is work to be done.
-    //
-    endpointDesc->tailTD            = newTailTD;
-    endpointDesc->ep.tailTDPhysAddr = HostToUSBLong(newTailTD->physAddr);
-    flushEndpointDescriptor(endpointDesc);
-    WIIDBGLOG("Added non-data gen TD phys 0x%X, next 0x%X", currTD->physAddr, USBToHostLong(currTD->td.nextTDPhysAddr));
+    endpoint->tailTransfer       = tailTransfer;
+    endpoint->ed->tailTDPhysAddr = HostToUSBLong(tailTransfer->physAddr);
+    writeReg32(kOHCIRegCmdStatus, cmdBits);
   }
 
-  writeReg32(kOHCIRegCmdStatus, cmdBits);
   return kIOReturnSuccess;
 }
 
@@ -150,81 +137,75 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 
 // This function is gated and called within the workloop context.
 //
 void WiiOHCI::completeTransferQueue(UInt32 headPhysAddr) {
-  OHCITransferDescriptor  *headDoneTD;
-  OHCITransferDescriptor  *currTD;
-  OHCITransferDescriptor  *nextTD;
-  UInt32                  transferStatus;
-  UInt32                  bufferSizeRemaining;
-  IOReturn                tdStatus;
+  OHCITransferData  *currTransfer;
+  OHCITransferData  *nextTransfer;
+  UInt32            transferStatus;
+  UInt32            bufferSizeRemaining;
+  IOReturn          tdStatus;
 
   //
   // Verify there actually is a queue.
   //
   if (headPhysAddr == 0) {
-    WIIDBGLOG("head is zero");
-    while (true);
-    return;
-  }
-  headDoneTD = getTDFromPhysMapping(headPhysAddr);
-  if (headDoneTD == NULL) {
-    WIIDBGLOG("head TD is zero");
-    while (true);
     return;
   }
 
-  currTD = headDoneTD;
-  while (currTD != NULL) {
-    invalidateTransferDescriptor(currTD);
-    transferStatus = (USBToHostLong(currTD->td.flags) & kOHCIGenTDFlagsConditionCodeMask) >> kOHCIGenTDFlagsConditionCodeShift;
+  WIIDBGLOG("Head done: 0x%X", headPhysAddr);
+  currTransfer = getTDFromPhysMapping(headPhysAddr);
+  if (currTransfer == NULL) {
+    WIISYSLOG("head TD is zero");
+    return;
+  }
+
+  while (currTransfer != NULL) {
+    transferStatus = (USBToHostLong(currTransfer->td->flags) & kOHCIGenTDFlagsConditionCodeMask) >> kOHCIGenTDFlagsConditionCodeShift;
     tdStatus = convertTDStatus(transferStatus);
-    WIIDBGLOG("TD phys 0x%X, stat: 0x%X, 0x%X", currTD->physAddr, transferStatus, tdStatus);
+    WIIDBGLOG("TD phys 0x%X, next 0x%X, stat: 0x%X, 0x%X", currTransfer->physAddr, USBToHostLong(currTransfer->td->nextTDPhysAddr), transferStatus, tdStatus);
 
     if (tdStatus != kIOReturnSuccess) {
       WIISYSLOG("Got an error here: 0x%X", tdStatus);
     }
 
-    if (currTD->descType == kOHCITransferDescriptorTypeIsochronous) {
+    if (currTransfer->type == kOHCITransferTypeIsochronous) {
       // TODO
     } else {
       //
       // Copy data back into original buffer.
       //
-      if (currTD->srcBuffer != NULL) {
-        invalidateDataCache(currTD->tmpBufferPtr, currTD->actualBufferSize);
-        currTD->srcBuffer->writeBytes(0, currTD->tmpBufferPtr, currTD->actualBufferSize);
-        OSSafeReleaseNULL(currTD->srcBuffer);
+      if (currTransfer->srcBuffer != NULL) {
+        if (currTransfer->srcBuffer->getDirection() & kIODirectionIn) {
+          currTransfer->srcBuffer->writeBytes(0, currTransfer->tmpBufferPtr, currTransfer->actualBufferSize);
+        }
+        OSSafeReleaseNULL(currTransfer->srcBuffer);
       }
 
       //
       // Invoke completion if present.
       //
-      if (currTD->descFlags & kOHCITransferDescriptorFlagsLastTD) {
-        if (USBToHostLong(currTD->td.currentBufferPtrPhysAddr) == 0) {
+      if (currTransfer->last) {
+        if (USBToHostLong(currTransfer->td->currentBufferPtrPhysAddr) == 0) {
           bufferSizeRemaining = 0;
         } else {
-          bufferSizeRemaining = USBToHostLong(currTD->td.bufferEndPhysAddr) - USBToHostLong(currTD->td.currentBufferPtrPhysAddr);
+          bufferSizeRemaining = USBToHostLong(currTransfer->td->bufferEndPhysAddr) - USBToHostLong(currTransfer->td->currentBufferPtrPhysAddr);
         }
 
-        if (currTD->actualBufferSize != 0) {
-          WIIDBGLOG("Completing a transfer %u bytes (%u bytes left), en 0x%X", currTD->actualBufferSize, bufferSizeRemaining, USBToHostLong(currTD->td.bufferEndPhysAddr));
+        if (currTransfer->actualBufferSize != 0) {
+          WIIDBGLOG("Completing a transfer %u bytes (%u bytes left), end 0x%X",
+            currTransfer->actualBufferSize, bufferSizeRemaining, USBToHostLong(currTransfer->td->bufferEndPhysAddr));
         } else {
           WIIDBGLOG("Completing a transfer with no data");
         }
 
-        Complete(currTD->completion.gen, tdStatus, bufferSizeRemaining);
+        Complete(currTransfer->completion.gen, tdStatus, bufferSizeRemaining);
       } else {
         WIIDBGLOG("No completion");
       }
 
-      nextTD = getTDFromPhysMapping(USBToHostLong(currTD->td.nextTDPhysAddr));
+      nextTransfer = getTDFromPhysMapping(USBToHostLong(currTransfer->td->nextTDPhysAddr));
     }
 
-    //
-    // Get the next transfer descriptor.
-    // The controller may have changed how the descriptors are linked, need to use the physical address.
-    //
-    returnTransferDescriptor(currTD);
-    currTD = nextTD;
+    returnTransfer(currTransfer);
+    currTransfer = nextTransfer;
   }
 }
 
@@ -248,9 +229,9 @@ IOReturn WiiOHCI::UIMCreateControlEndpoint(UInt8 functionNumber, UInt8 endpointN
   }
 
   //
-  // Add a new control endpoint descriptor.
+  // Add a new control endpoint.
   //
-  return addNewEndpoint(functionNumber, endpointNumber, maxPacketSize, speed, kUSBAnyDirn, _edControlHeadPtr);
+  return addNewEndpoint(functionNumber, endpointNumber, maxPacketSize, speed, kUSBAnyDirn, _controlEndpointHeadPtr);
 }
 
 //
@@ -305,9 +286,9 @@ IOReturn WiiOHCI::UIMCreateControlTransfer(short functionNumber, short endpointN
 //
 IOReturn WiiOHCI::UIMCreateControlTransfer(short functionNumber, short endpointNumber, IOUSBCompletion completion,
                                            IOMemoryDescriptor *CBP, bool bufferRounding, UInt32 bufferSize, short direction) {
-  OHCIEndpointDescriptor  *endpointDesc;
-  UInt8                   endpointType;
-  UInt32                  flags;
+  OHCIEndpointData  *endpoint;
+  UInt8             endpointType;
+  UInt32            flags;
 
   WIIDBGLOG("F: %d, EP: %u, dir: %d, sz: %u", functionNumber, endpointNumber, direction, bufferSize);
 
@@ -315,8 +296,8 @@ IOReturn WiiOHCI::UIMCreateControlTransfer(short functionNumber, short endpointN
   // Locate the control endpoint.
   //
   endpointType = kWiiOHCIEndpointTypeControl;
-  endpointDesc = getEndpoint(functionNumber, endpointNumber, direction, &endpointType);
-  if (endpointDesc == NULL) {
+  endpoint     = getEndpoint(functionNumber, endpointNumber, direction, &endpointType);
+  if (endpoint == NULL) {
     WIIDBGLOG("Endpoint not found");
     return kIOUSBEndpointNotFound;
   }
@@ -341,8 +322,8 @@ IOReturn WiiOHCI::UIMCreateControlTransfer(short functionNumber, short endpointN
   //
   // Submit the control transfer.
   //
-  return doGeneralTransfer(endpointDesc, kOHCITransferDescriptorTypeControl,
-    completion, CBP, bufferSize, flags, kOHCIRegCmdStatusControlListFilled);
+  return doGeneralTransfer(endpoint, kOHCITransferTypeControl, completion,
+    CBP, bufferSize, flags, kOHCIRegCmdStatusControlListFilled);
 }
 
 //
@@ -354,13 +335,13 @@ IOReturn WiiOHCI::UIMCreateControlTransfer(short functionNumber, short endpointN
 // This function is gated and called within the workloop context.
 //
 IOReturn WiiOHCI::UIMCreateBulkEndpoint(UInt8 functionNumber, UInt8 endpointNumber, UInt8 direction, UInt8 speed, UInt8 maxPacketSize) {
-  WIISYSLOG("F: %d, EP: %u, spd: %s, psz: %u", functionNumber, endpointNumber,
+  WIIDBGLOG("F: %d, EP: %u, spd: %s, psz: %u", functionNumber, endpointNumber,
     (speed == kUSBDeviceSpeedFull) ? "full" : "low", maxPacketSize);
 
   //
-  // Add a new bulk endpoint descriptor.
+  // Add a new bulk endpoint.
   //
-  return addNewEndpoint(functionNumber, endpointNumber, maxPacketSize, speed, kUSBAnyDirn, _edBulkHeadPtr);
+  return addNewEndpoint(functionNumber, endpointNumber, maxPacketSize, speed, kUSBAnyDirn, _bulkEndpointHeadPtr);
 }
 
 //
@@ -373,18 +354,18 @@ IOReturn WiiOHCI::UIMCreateBulkEndpoint(UInt8 functionNumber, UInt8 endpointNumb
 //
 IOReturn WiiOHCI::UIMCreateBulkTransfer(short functionNumber, short endpointNumber, IOUSBCompletion completion,
                                         IOMemoryDescriptor *CBP, bool bufferRounding, UInt32 bufferSize, short direction) {
-  OHCIEndpointDescriptor  *endpointDesc;
-  UInt8                   endpointType;
-  UInt32                  flags;
+  OHCIEndpointData  *endpoint;
+  UInt8             endpointType;
+  UInt32            flags;
 
-  WIISYSLOG("F: %d, EP: %u, dir: %d, sz: %u", functionNumber, endpointNumber, direction, bufferSize);
+  WIIDBGLOG("F: %d, EP: %u, dir: %d, sz: %u", functionNumber, endpointNumber, direction, bufferSize);
 
   //
   // Locate the bulk endpoint.
   //
   endpointType = kWiiOHCIEndpointTypeBulk;
-  endpointDesc = getEndpoint(functionNumber, endpointNumber, direction, &endpointType);
-  if (endpointDesc == NULL) {
+  endpoint     = getEndpoint(functionNumber, endpointNumber, direction, &endpointType);
+  if (endpoint == NULL) {
     WIIDBGLOG("Endpoint not found");
     return kIOUSBEndpointNotFound;
   }
@@ -404,8 +385,8 @@ IOReturn WiiOHCI::UIMCreateBulkTransfer(short functionNumber, short endpointNumb
   //
   // Submit the bulk transfer.
   //
-  return doGeneralTransfer(endpointDesc, kOHCITransferDescriptorTypeBulk,
-    completion, CBP, bufferSize, flags, kOHCIRegCmdStatusBulkListFilled);
+  return doGeneralTransfer(endpoint, kOHCITransferTypeBulk, completion,
+    CBP, bufferSize, flags, kOHCIRegCmdStatusBulkListFilled);
 }
 
 //
@@ -418,7 +399,7 @@ IOReturn WiiOHCI::UIMCreateBulkTransfer(short functionNumber, short endpointNumb
 //
 IOReturn WiiOHCI::UIMCreateInterruptEndpoint(short functionAddress, short endpointNumber, UInt8 direction,
                                              short speed, UInt16 maxPacketSize, short pollingRate) {
-  OHCIEndpointDescriptor  *endpointIntHead;
+  OHCIEndpointData  *endpointIntHead;
 
   WIIDBGLOG("F: %d, EP: %u, dir: %d, spd: %s, sz: %u, pr: %d", functionAddress, endpointNumber, direction,
     (speed == kUSBDeviceSpeedFull) ? "full" : "low", maxPacketSize, pollingRate);
@@ -433,7 +414,7 @@ IOReturn WiiOHCI::UIMCreateInterruptEndpoint(short functionAddress, short endpoi
   //
   // Get the correct head for the desired polling rate.
   //
-  endpointIntHead = getInterruptEDHead(pollingRate);
+  endpointIntHead = getInterruptEndpointHead(pollingRate);
   if (endpointIntHead == NULL) {
     return kIOReturnNoBandwidth;
   }
@@ -454,9 +435,9 @@ IOReturn WiiOHCI::UIMCreateInterruptEndpoint(short functionAddress, short endpoi
 //
 IOReturn WiiOHCI::UIMCreateInterruptTransfer(short functionNumber, short endpointNumber, IOUSBCompletion completion,
                                              IOMemoryDescriptor *CBP, bool bufferRounding, UInt32 bufferSize, short direction) {
-  OHCIEndpointDescriptor  *endpointDesc;
-  UInt8                   endpointType;
-  UInt32                  flags;
+  OHCIEndpointData  *endpoint;
+  UInt8             endpointType;
+  UInt32            flags;
 
   WIIDBGLOG("F: %d, EP: %u, dir: %d, sz: %u", functionNumber, endpointNumber, direction, bufferSize);
 
@@ -472,8 +453,8 @@ IOReturn WiiOHCI::UIMCreateInterruptTransfer(short functionNumber, short endpoin
   // Locate the interrupt endpoint.
   //
   endpointType = kWiiOHCIEndpointTypeInterrupt;
-  endpointDesc = getEndpoint(functionNumber, endpointNumber, direction, &endpointType);
-  if (endpointDesc == NULL) {
+  endpoint     = getEndpoint(functionNumber, endpointNumber, direction, &endpointType);
+  if (endpoint == NULL) {
     return kIOUSBEndpointNotFound;
   }
 
@@ -488,7 +469,7 @@ IOReturn WiiOHCI::UIMCreateInterruptTransfer(short functionNumber, short endpoin
     flags |= kOHCIGenTDFlagsBufferRounding;
   }
 
-  return doGeneralTransfer(endpointDesc, kOHCITransferDescriptorTypeInterrupt, completion, CBP, bufferSize, flags, 0);
+  return doGeneralTransfer(endpoint, kOHCITransferTypeInterrupt, completion, CBP, bufferSize, flags, 0);
 }
 
 //
@@ -521,15 +502,14 @@ IOReturn WiiOHCI::UIMCreateIsochTransfer(short functionAddress, short endpointNu
 //
 // Overrides IOUSBController::UIMAbortEndpoint().
 //
-// Removes any transfer descriptors for an endpoint and resets any stall conditions.
+// Removes any transfers for an endpoint and resets any stall conditions.
 // Called from IOUSBController::DoAbortEP().
 //
 // This function is gated and called within the workloop context.
 //
 IOReturn WiiOHCI::UIMAbortEndpoint(short functionNumber, short endpointNumber, short direction) {
-  OHCIEndpointDescriptor  *endpointDesc;
-  UInt8                   endpointType;
-  UInt32                  listMask;
+  OHCIEndpointData  *endpoint;
+  UInt8             endpointType;
 
   WIIDBGLOG("F: %d, EP: %d, dir: %d", functionNumber, endpointNumber, direction);
 
@@ -537,67 +517,26 @@ IOReturn WiiOHCI::UIMAbortEndpoint(short functionNumber, short endpointNumber, s
   // Locate the endpoint.
   //
   endpointType = kWiiOHCIEndpointTypeAll;
-  endpointDesc = getEndpoint(functionNumber, endpointNumber, direction, &endpointType);
-  if (endpointDesc == NULL) {
+  endpoint     = getEndpoint(functionNumber, endpointNumber, direction, &endpointType);
+  if (endpoint == NULL) {
     return kIOUSBEndpointNotFound;
   }
-  WIIDBGLOG("Aborting EP phys: 0x%X", endpointDesc->physAddr);
-
-  switch (endpointType) {
-    case kWiiOHCIEndpointTypeControl:
-      listMask = kOHCIRegControlControlListEnable;
-      break;
-
-    case kWiiOHCIEndpointTypeInterrupt:
-      listMask = kOHCIRegControlPeriodicListEnable;
-      break;
-
-    case kWiiOHCIEndpointTypeBulk:
-      listMask = kOHCIRegControlBulkListEnable;
-      break;
-
-    case kWiiOHCIEndpointTypeIsochronous:
-      listMask = kOHCIRegControlIsochronousEnable;
-      break;
-
-    default:
-      return kIOReturnBadArgument;
-  }
+  WIIDBGLOG("Aborting EP phys: 0x%X", endpoint->physAddr);
 
   //
-  // Stop processing and wait for next frame.
-  // Cannot guarantee that endpoint descriptor will not be
-  // changed by the controller, so best to just stop everything temporarily.
+  // Mark endpoint as skipped and wait until next frame.
   //
-  writeReg32(kOHCIRegControl, readReg32(kOHCIRegControl) & ~(listMask));
+  endpoint->ed->flags |= HostToUSBLong(kOHCIEDFlagsSkip);
   writeReg32(kOHCIRegIntStatus, kOHCIRegIntStatusStartOfFrame);
   while ((readReg32(kOHCIRegIntStatus) & kOHCIRegIntStatusStartOfFrame) == 0) {
     IODelay(10);
   }
 
   //
-  // Mark endpoint as skipped.
-  // Need to invalidate here as other endpoint fields could have changed by the hardware.
+  // Remove all transfers associated with endpoint and re-activate the endpoint.
   //
-  invalidateEndpointDescriptor(endpointDesc);
-  endpointDesc->ep.flags |= HostToUSBLong(kOHCIEDFlagsSkip);
-  flushEndpointDescriptor(endpointDesc);
-
-  //
-  // Resume endpoint processing and wait until next frame.
-  //
-  writeReg32(kOHCIRegControl, readReg32(kOHCIRegControl) | listMask);
-  writeReg32(kOHCIRegIntStatus, kOHCIRegIntStatusStartOfFrame);
-  while ((readReg32(kOHCIRegIntStatus) & kOHCIRegIntStatusStartOfFrame) == 0) {
-    IODelay(10);
-  }
-
-  //
-  // Remove all transfer descriptors associated with endpoint and re-activate the endpoint.
-  //
-  removeEndpointTransferDescriptors(endpointDesc);
-  endpointDesc->ep.flags &= ~(HostToUSBLong(kOHCIEDFlagsSkip));
-  flushEndpointDescriptor(endpointDesc);
+  removeEndpointTransfers(endpoint);
+  endpoint->ed->flags &= ~(HostToUSBLong(kOHCIEDFlagsSkip));
 
   return kIOReturnSuccess;
 }
@@ -611,10 +550,10 @@ IOReturn WiiOHCI::UIMAbortEndpoint(short functionNumber, short endpointNumber, s
 // This function is gated and called within the workloop context.
 //
 IOReturn WiiOHCI::UIMDeleteEndpoint(short functionNumber, short endpointNumber, short direction) {
-  OHCIEndpointDescriptor  *endpointDesc;
-  OHCIEndpointDescriptor  *prevEndpointDesc;
-  UInt8                   endpointType;
-  UInt32                  listMask;
+  OHCIEndpointData  *endpoint;
+  OHCIEndpointData  *prevEndpoint;
+  UInt8             endpointType;
+  UInt32            listMask;
 
   WIIDBGLOG("F: %d, EP: %d, dir: %d", functionNumber, endpointNumber, direction);
 
@@ -622,15 +561,12 @@ IOReturn WiiOHCI::UIMDeleteEndpoint(short functionNumber, short endpointNumber, 
   // Locate the endpoint.
   //
   endpointType = kWiiOHCIEndpointTypeAll;
-  endpointDesc = getEndpoint(functionNumber, endpointNumber, direction, &endpointType, &prevEndpointDesc);
-  if (endpointDesc == NULL) {
+  endpoint     = getEndpoint(functionNumber, endpointNumber, direction, &endpointType, &prevEndpoint);
+  if (endpoint == NULL) {
     return kIOUSBEndpointNotFound;
   }
-  WIIDBGLOG("Deleting EP phys: 0x%X, previous EP phys: 0x%X, type: 0x%X", endpointDesc->physAddr, prevEndpointDesc->physAddr, endpointType);
+  WIIDBGLOG("Deleting EP phys: 0x%X, previous EP phys: 0x%X, type: 0x%X", endpoint->physAddr, prevEndpoint->physAddr, endpointType);
 
-  //
-  // Stop processing and wait for next frame.
-  //
   switch (endpointType) {
     case kWiiOHCIEndpointTypeControl:
       listMask = kOHCIRegControlControlListEnable;
@@ -653,9 +589,16 @@ IOReturn WiiOHCI::UIMDeleteEndpoint(short functionNumber, short endpointNumber, 
   }
 
   //
-  // Stop processing and wait for next frame.
-  // Cannot guarantee that endpoint descriptor will not be
-  // changed by the controller, so best to just stop everything temporarily.
+  // Mark endpoint as skipped and wait until next frame.
+  //
+  endpoint->ed->flags |= HostToUSBLong(kOHCIEDFlagsSkip);
+  writeReg32(kOHCIRegIntStatus, kOHCIRegIntStatusStartOfFrame);
+  while ((readReg32(kOHCIRegIntStatus) & kOHCIRegIntStatusStartOfFrame) == 0) {
+    IODelay(10);
+  }
+
+  //
+  // Stop processing of endpoints.
   //
   writeReg32(kOHCIRegControl, readReg32(kOHCIRegControl) & ~(listMask));
   writeReg32(kOHCIRegIntStatus, kOHCIRegIntStatusStartOfFrame);
@@ -664,27 +607,18 @@ IOReturn WiiOHCI::UIMDeleteEndpoint(short functionNumber, short endpointNumber, 
   }
 
   //
-  // Mark endpoint as skipped.
-  // Need to invalidate here as other endpoint fields could have changed by the hardware.
-  //
-  invalidateEndpointDescriptor(endpointDesc);
-  endpointDesc->ep.flags |= HostToUSBLong(kOHCIEDFlagsSkip);
-  flushEndpointDescriptor(endpointDesc);
-
-  //
   // Remove endpoint from linked list and resume endpoint processing.
   //
-  prevEndpointDesc->nextED            = endpointDesc->nextED;
-  prevEndpointDesc->ep.nextEDPhysAddr = endpointDesc->ep.nextEDPhysAddr;
-  flushEndpointDescriptor(prevEndpointDesc);
+  prevEndpoint->nextEndpoint       = endpoint->nextEndpoint;
+  prevEndpoint->ed->nextEDPhysAddr = endpoint->ed->nextEDPhysAddr;
   writeReg32(kOHCIRegControl, readReg32(kOHCIRegControl) | listMask);
-  WIIDBGLOG("Unlinked EP phys: 0x%X", endpointDesc->physAddr);
+  WIIDBGLOG("Unlinked EP phys: 0x%X", endpoint->physAddr);
 
   //
-  // Remove all transfer descriptors associated with endpoint and remove the endpoint descriptor.
+  // Remove all transfers associated with endpoint and remove the endpoint.
   //
-  removeEndpointTransferDescriptors(endpointDesc);
-  returnEndpointDescriptor(endpointDesc);
+  removeEndpointTransfers(endpoint);
+  returnEndpoint(endpoint);
 
   return kIOReturnSuccess;
 }
@@ -698,8 +632,8 @@ IOReturn WiiOHCI::UIMDeleteEndpoint(short functionNumber, short endpointNumber, 
 // This function is gated and called within the workloop context.
 //
 IOReturn WiiOHCI::UIMClearEndpointStall(short functionNumber, short endpointNumber, short direction) {
-  OHCIEndpointDescriptor  *endpointDesc;
-  UInt8                   endpointType;
+  OHCIEndpointData  *endpoint;
+  UInt8             endpointType;
 
   WIIDBGLOG("F: %d, EP: %d, dir: %d", functionNumber, endpointNumber, direction);
 
@@ -707,17 +641,17 @@ IOReturn WiiOHCI::UIMClearEndpointStall(short functionNumber, short endpointNumb
   // Locate the endpoint.
   //
   endpointType = kWiiOHCIEndpointTypeAll;
-  endpointDesc = getEndpoint(functionNumber, endpointNumber, direction, &endpointType);
-  if (endpointDesc == NULL) {
+  endpoint     = getEndpoint(functionNumber, endpointNumber, direction, &endpointType);
+  if (endpoint == NULL) {
     return kIOUSBEndpointNotFound;
   }
-  WIIDBGLOG("Clearing EP phys: 0x%X", endpointDesc->physAddr);
+  WIIDBGLOG("Clearing EP phys: 0x%X, type 0%X", endpoint->physAddr, endpointType);
 
   //
-  // Reset the transfer queue by unlinking all transfer descriptors.
+  // Reset the transfer queue by unlinking all transfers.
   // This will also clear the current stall bit on the endpoint.
   //
-  removeEndpointTransferDescriptors(endpointDesc);
+  removeEndpointTransfers(endpoint);
 
   return kIOReturnSuccess;
 }

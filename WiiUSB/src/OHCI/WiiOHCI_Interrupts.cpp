@@ -13,6 +13,7 @@
 void WiiOHCI::handleInterrupt(IOInterruptEventSource *intEventSource, int count) {
   UInt32  intStatus;
   UInt32  intEnable;
+  UInt32  hccaPhysDone;
 
   intStatus = readReg32(kOHCIRegIntStatus);
   intEnable = readReg32(kOHCIRegIntEnable);
@@ -27,6 +28,10 @@ void WiiOHCI::handleInterrupt(IOInterruptEventSource *intEventSource, int count)
     return;
   }
 
+  if (intStatus & (kOHCIRegIntEnableSchedulingOverrun | kOHCIRegIntEnableResumeDetected | kOHCIRegIntEnableUnrecoverableError)) {
+    WIIDBGLOG("Got a weird one here\n");
+  }
+
   //
   // Queue completed.
   //
@@ -34,9 +39,10 @@ void WiiOHCI::handleInterrupt(IOInterruptEventSource *intEventSource, int count)
     //
     // Get the queue head from HCCA.
     //
-    invalidateDataCache(&_hccaPtr->doneHeadPhysAddr, sizeof (_hccaPtr->doneHeadPhysAddr));
-    completeTransferQueue(USBToHostLong(_hccaPtr->doneHeadPhysAddr) & kOHCIRegDoneHeadMask);
+    hccaPhysDone = USBToHostLong(_hccaPtr->doneHeadPhysAddr) & kOHCIRegDoneHeadMask;
+    _hccaPtr->doneHeadPhysAddr = 0;
     writeReg32(kOHCIRegIntStatus, kOHCIRegIntStatusWritebackDoneHead);
+    completeTransferQueue(hccaPhysDone);
   }
 
   //

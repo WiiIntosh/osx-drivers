@@ -21,9 +21,9 @@ bool WiiOHCI::init(OSDictionary *dictionary) {
   _interruptEventSource   = NULL;
   _physMappingHeadPtr     = NULL;
 
-  _freeEDHeadPtr     = NULL;
-  _freeTDHeadPtr     = NULL;
-  _freeMem2TDHeadPtr = NULL;
+  _freeEndpointHeadPtr     = NULL;
+  _freeTransferHeadPtr     = NULL;
+  _freeMem2TransferHeadPtr = NULL;
 
   _rootHubInterruptTransLock = IOLockAlloc();
   if (_rootHubInterruptTransLock == NULL) {
@@ -46,7 +46,6 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
   UInt32    ohciFrameInterval;
   UInt32    ohciFrameLargestPacket;
   UInt32    ohciRemoteWakeup;
-  IOPhysicalSegment hccaSegment;
  // WiiPE     *wiiPE;
   IOReturn  status;
 
@@ -133,43 +132,28 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
   //
   // Allocate the HCCA.
   //
-  if (_mem2Allocator == NULL) {
-    _hccaBuffer = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous, sizeof (OHCIHostControllerCommArea), sizeof (OHCIHostControllerCommArea));
-    if (_hccaBuffer == NULL) {
-      WIISYSLOG("Failed to create HCCA buffer");
-      return kIOReturnNoResources;
-    }
+  if (_mem2Allocator != NULL) {
+    // Wii TODO.
+    
 
-    if (_memoryCursor->getPhysicalSegments(_hccaBuffer, 0, &hccaSegment, 1, sizeof (OHCIHostControllerCommArea)) != 1) {
-      WIISYSLOG("Failed to map HCCA buffer");
-      return kIOReturnNoResources;
-    }
-
-    _hccaPtr = (OHCIHostControllerCommArea *) ((IOBufferMemoryDescriptor*)_hccaBuffer)->getBytesNoCopy();
-    _hccaPhysAddr = hccaSegment.location;
+  //
+  // Wii U can have HCCA located anywhere.
+  //
   } else {
-    if (!_mem2Allocator->allocate(sizeof (OHCIHostControllerCommArea), &_hccaPhysAddr, sizeof (OHCIHostControllerCommArea))) {
-      WIISYSLOG("Failed to create HCCA buffer");
-      return kIOReturnNoResources;
+    //
+    // Wii platforms are not cache coherent, host controller structures must be non-cacheable.
+    // Need to allocate an entire page to ensure nothing else will occupy this cache-inhibited area.
+    //
+    _hccaPtr = (OHCIHostControllerCommArea*) IOMallocContiguous(PAGE_SIZE, PAGE_SIZE, &_hccaPhysAddr);
+    if (_hccaPtr == NULL) {
+      return kIOReturnNoMemory;
     }
-
-    _hccaBuffer = IOMemoryDescriptor::withPhysicalAddress(_hccaPhysAddr, sizeof (OHCIHostControllerCommArea), kIODirectionInOut);
-    if (_hccaBuffer == NULL) {
-      WIISYSLOG("Failed to create HCCA buffer");
-      return kIOReturnNoResources;
+    status = IOSetProcessorCacheMode(kernel_task, (IOVirtualAddress) _hccaPtr, PAGE_SIZE, kIOInhibitCache);
+    if (status != kIOReturnSuccess) {
+      return status;
     }
-
-    _hccaMap = _hccaBuffer->map(kIOMapInhibitCache);
-    if (_hccaMap == NULL) {
-      WIISYSLOG("Failed to map HCCA buffer");
-      return kIOReturnNoResources;
-    }
-
-    _hccaPtr = (OHCIHostControllerCommArea *) _hccaMap->getVirtualAddress();
   }
-
-  bzero((void*)_hccaPtr, sizeof (*_hccaPtr));
-  flushDataCache(_hccaPtr, sizeof (*_hccaPtr));
+  bzero(_hccaPtr, sizeof (*_hccaPtr));
 
   //
   // Software reset controller.
@@ -193,23 +177,23 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
   writeReg32(kOHCIRegHCCA, _hccaPhysAddr);
 
   //
-  // Setup descriptor lists.
+  // Setup endpoint lists.
   //
-  status = initControlEDs();
+  status = initControlEndpoints();
   if (status != kIOReturnSuccess) {
-    WIISYSLOG("Failed to configure control EDs");
+    WIISYSLOG("Failed to configure control endpoints");
     return status;
   }
 
-  status = initBulkEDs();
+  status = initBulkEndpoints();
   if (status != kIOReturnSuccess) {
-    WIISYSLOG("Failed to configure bulk EDs");
+    WIISYSLOG("Failed to configure bulk endpoints");
     return status;
   }
 
-  status = initInterruptEDs();
+  status = initInterruptEndpoints();
   if (status != kIOReturnSuccess) {
-    WIISYSLOG("Failed to configure interrupt EDs");
+    WIISYSLOG("Failed to configure interrupt endpoints");
     return status;
   }
 

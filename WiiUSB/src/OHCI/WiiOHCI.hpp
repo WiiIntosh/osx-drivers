@@ -17,13 +17,7 @@
 #include "WiiCommon.hpp"
 #include "OHCIRegs.hpp"
 
-//
-// Initial descriptors.
-//
-#define kWiiOHCIInitialNumEDs       128
-#define kWiiOHCIInitialNumTDs       256
-
-#define kWiiOHCITempBufferSize      0x200
+#define kWiiOHCITempBufferSize      PAGE_SIZE
 
 //
 // Total interrupt nodes in tree.
@@ -58,28 +52,26 @@ private:
   //
   // Descriptors.
   //
-  OHCIPhysicalMapping       *_physMappingHeadPtr;
+  OHCIPhysicalMapping   *_physMappingHeadPtr;
 
   // Free descriptors.
-  OHCIEndpointDescriptor    *_freeEDHeadPtr;
-  OHCITransferDescriptor    *_freeTDHeadPtr;
-  OHCITransferDescriptor    *_freeMem2TDHeadPtr;
+  OHCIEndpointData      *_freeEndpointHeadPtr;
+  OHCITransferData      *_freeTransferHeadPtr;
+  OHCITransferData      *_freeMem2TransferHeadPtr;
 
   // Control endpoints.
-  OHCIEndpointDescriptor    *_edControlHeadPtr;
-  OHCIEndpointDescriptor    *_edControlTailPtr;
+  OHCIEndpointData      *_controlEndpointHeadPtr;
+  OHCIEndpointData      *_controlEndpointTailPtr;
 
   // Bulk endpoints.
-  OHCIEndpointDescriptor    *_edBulkHeadPtr;
-  OHCIEndpointDescriptor    *_edBulkTailPtr;
+  OHCIEndpointData      *_bulkEndpointHeadPtr;
+  OHCIEndpointData      *_bulkEndpointTailPtr;
 
   // Interrupt endpoints.
-  OHCIIntEndpoint           _edInterrupts[kWiiOHCIInterruptNodeCount];
+  OHCIIntEndpoint       _interruptEndpoints[kWiiOHCIInterruptNodeCount];
 
   // HCCA.
   IOPhysicalAddress           _hccaPhysAddr;
-  IOMemoryDescriptor          *_hccaBuffer;
-  IOMemoryMap                 *_hccaMap;
   OHCIHostControllerCommArea  *_hccaPtr;
 
   inline UInt32 readReg32(UInt32 offset) {
@@ -93,19 +85,6 @@ private:
   }
   inline void writeRootHubPort32(UInt16 port, UInt32 data) {
     return writeReg32(kOHCIRegRhPortStatusBase + ((port - 1) * sizeof (UInt32)), data);
-  }
-
-  inline void flushEndpointDescriptor(OHCIEndpointDescriptor *endpointDesc) {
-    flushDataCache(&endpointDesc->ep, sizeof (endpointDesc->ep));
-  }
-  inline void invalidateEndpointDescriptor(OHCIEndpointDescriptor *endpointDesc) {
-    invalidateDataCache(&endpointDesc->ep, sizeof (endpointDesc->ep));
-  }
-  inline void flushTransferDescriptor(OHCITransferDescriptor *transferDesc) {
-    flushDataCache(&transferDesc->td, sizeof (transferDesc->td));
-  }
-  inline void invalidateTransferDescriptor(OHCITransferDescriptor *transferDesc) {
-    invalidateDataCache(&transferDesc->td, sizeof (transferDesc->td));
   }
 
   UInt16      _rootHubAddress;
@@ -133,33 +112,32 @@ private:
   // Descriptor functions.
   //
   IOReturn convertTDStatus(UInt8 ohciStatus);
-  IOReturn createPhysTDMapping(OHCITransferDescriptor *transferDesc);
-  OHCITransferDescriptor *getTDFromPhysMapping(UInt32 physAddr);
-  OHCIEndpointDescriptor *allocateEndpointDescriptor(void);
-  OHCITransferDescriptor *allocateTransferDescriptor(bool requireMem2);
-  OHCIEndpointDescriptor *getFreeEndpointDescriptor(void);
-  OHCITransferDescriptor *getFreeTransferDescriptor(bool requireMem2);
-  void returnEndpointDescriptor(OHCIEndpointDescriptor *endpointDesc);
-  void returnTransferDescriptor(OHCITransferDescriptor *transferDesc);
+  IOReturn createPhysTDMapping(OHCITransferData *transfer);
+  OHCITransferData *getTDFromPhysMapping(UInt32 physAddr);
+  IOReturn allocateFreeEndpoints(void);
+  IOReturn allocateFreeTransfers(bool mem2);
+  OHCIEndpointData *getFreeEndpoint(void);
+  OHCITransferData *getFreeTransfer(bool requireMem2);
+  void returnEndpoint(OHCIEndpointData *endpoint);
+  void returnTransfer(OHCITransferData *transfer);
 
-  IOReturn initControlEDs(void);
-  IOReturn initBulkEDs(void);
-  IOReturn initInterruptEDs(void);
-  OHCIEndpointDescriptor *getEndpoint(UInt8 functionNumber, UInt8 endpointNumber, UInt8 direction,
-                                      UInt8 *type, OHCIEndpointDescriptor **outPrevEndpoint = NULL);
-
-  OHCIEndpointDescriptor *getInterruptEDHead(UInt8 pollingRate);
+  IOReturn initControlEndpoints(void);
+  IOReturn initBulkEndpoints(void);
+  IOReturn initInterruptEndpoints(void);
+  OHCIEndpointData *getEndpoint(UInt8 functionNumber, UInt8 endpointNumber, UInt8 direction,
+                                UInt8 *type, OHCIEndpointData **outPrevEndpoint = NULL);
+  OHCIEndpointData *getInterruptEndpointHead(UInt8 pollingRate);
   IOReturn addNewEndpoint(UInt8 functionNumber, UInt8 endpointNumber, UInt16 maxPacketSize,
-                          UInt8 speed, UInt8 direction, OHCIEndpointDescriptor *edHeadPtr,
+                          UInt8 speed, UInt8 direction, OHCIEndpointData *endpointHeadPtr,
                           bool isIsoTransfer = false);
   IOReturn removeEndpoint(UInt8 functionNumber, UInt8 endpointNumber,
-                          OHCIEndpointDescriptor *edHeadPtr, OHCIEndpointDescriptor *edTailPtr);
-  void removeEndpointTransferDescriptors(OHCIEndpointDescriptor *endpointDesc);
+                          OHCIEndpointData *endpointHeadPtr, OHCIEndpointData *endpointTailPtr);
+  void removeEndpointTransfers(OHCIEndpointData *endpoint);
 
   //
   // Transfers.
   //
-  IOReturn doGeneralTransfer(OHCIEndpointDescriptor *endpointDesc, UInt8 type, IOUSBCompletion completion,
+  IOReturn doGeneralTransfer(OHCIEndpointData *endpoint, UInt8 type, IOUSBCompletion completion,
                              IOMemoryDescriptor *buffer, UInt32 bufferSize, UInt32 flags, UInt32 cmdBits);
   void completeTransferQueue(UInt32 headPhysAddr);
 
