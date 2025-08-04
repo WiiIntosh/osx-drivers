@@ -361,9 +361,10 @@ IOReturn WiiOHCI::GetRootHubStringDescriptor(UInt8 index, OSData *desc) {
   UInt8 productName[] = {
     0,          // Length.
     kUSBStringDesc, // Descriptor type.
-    0x57, 0x00, // "W"
-    0x69, 0x00, // "i"
-    0x69, 0x00, // "i"
+    0x4F, 0x00, // "O"
+    0x48, 0x00, // "H"
+    0x43, 0x00, // "C"
+    0x49, 0x00, // "I"
     0x20, 0x00, // " "
     0x52, 0x00, // "R"
     0x6F, 0x00, // "o"
