@@ -16,7 +16,7 @@
 OSDefineMetaClassAndStructors(LatteInterruptController, super);
 
 //
-// Overrides IOInterruptController::init()
+// Overrides IOInterruptController::init().
 //
 bool LatteInterruptController::init(OSDictionary *dictionary) {
   WiiCheckDebugArgs();
@@ -28,7 +28,7 @@ bool LatteInterruptController::init(OSDictionary *dictionary) {
 }
 
 //
-// Overrides IOInterruptController::start()
+// Overrides IOInterruptController::start().
 //
 bool LatteInterruptController::start(IOService *provider) {
   OSSymbol  *interruptControllerName;
@@ -152,7 +152,7 @@ IOReturn LatteInterruptController::handleInterrupt(void *refCon, IOService *nub,
     //
     // Check if this vector is active.
     //
-    if ((cause & (1 << vectorIndex)) == 0) {
+    if ((cause & (1ULL << vectorIndex)) == 0) {
       continue;
     }
 
@@ -200,11 +200,16 @@ int LatteInterruptController::getVectorType(IOInterruptVectorNumber vectorNumber
 // Masks and disables the specified vector.
 //
 void LatteInterruptController::disableVectorHard(IOInterruptVectorNumber vectorNumber, IOInterruptVector *vector) {
-  UInt64 mask = ((UInt64)readReg32(kWiiLatteIntRegPPCInterruptMask0) | ((UInt64)readReg32(kWiiLatteIntRegPPCInterruptMask1) << 32));
-  mask &= ~(1 << vectorNumber);
-  writeReg32(kWiiLatteIntRegPPCInterruptMask0, (UInt32)mask);
-  writeReg32(kWiiLatteIntRegPPCInterruptMask1, (UInt32)(mask >> 32));
-  eieio();
+  UInt32 mask;
+  if (vectorNumber < 32) {
+    mask = readReg32(kWiiLatteIntRegPPCInterruptMask0);
+    mask &= ~(1 << vectorNumber);
+    writeReg32(kWiiLatteIntRegPPCInterruptMask0, mask);
+  } else {
+    mask = readReg32(kWiiLatteIntRegPPCInterruptMask1);
+    mask &= ~(1 << (vectorNumber - 32));
+    writeReg32(kWiiLatteIntRegPPCInterruptMask1, mask);
+  }
 }
 
 //
@@ -214,14 +219,17 @@ void LatteInterruptController::disableVectorHard(IOInterruptVectorNumber vectorN
 // Acknowledge before masking otherwise a false interrupt may occur when IOInterruptEventSource re-enables the vector.
 //
 void LatteInterruptController::enableVector(IOInterruptVectorNumber vectorNumber, IOInterruptVector *vector) {
-  UInt64 mask = ((UInt64)readReg32(kWiiLatteIntRegPPCInterruptMask0) | ((UInt64)readReg32(kWiiLatteIntRegPPCInterruptMask1) << 32));
-  mask |= (1 << vectorNumber);
+  UInt32 mask;
   if (vectorNumber < 32) {
+    mask = readReg32(kWiiLatteIntRegPPCInterruptMask0);
     writeReg32(kWiiLatteIntRegPPCInterruptCause0, 1 << vectorNumber);
+    mask |= (1 << vectorNumber);
+    writeReg32(kWiiLatteIntRegPPCInterruptMask0, mask);
   } else {
+    mask = readReg32(kWiiLatteIntRegPPCInterruptMask1);
     writeReg32(kWiiLatteIntRegPPCInterruptCause1, 1 << (vectorNumber - 32));
+    mask |= (1 << (vectorNumber - 32));
+    writeReg32(kWiiLatteIntRegPPCInterruptMask1, mask);
   }
-  writeReg32(kWiiLatteIntRegPPCInterruptMask0, (UInt32)mask);
-  writeReg32(kWiiLatteIntRegPPCInterruptMask1, (UInt32)(mask >> 32));
   eieio();
 }
