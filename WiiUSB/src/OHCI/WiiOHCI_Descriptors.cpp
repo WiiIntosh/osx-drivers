@@ -37,38 +37,23 @@ IOReturn WiiOHCI::convertTDStatus(UInt8 ohciStatus) {
 }
 
 //
-// Creates a mapping for the specified transfer data.
+// Returns the general transfer data from a given physical address.
 //
-IOReturn WiiOHCI::createPhysTDMapping(OHCITransferData *transfer) {
-  OHCIPhysicalMapping *physMapping;
+OHCIGenTransferData *WiiOHCI::getGenTransferFromPhys(IOPhysicalAddress physAddr) {
+  WiiOHCIGenTransferBuffer  *genTransferBuffer;
+  OHCIGenTransferData       *genTransfer;
 
-  physMapping = (OHCIPhysicalMapping *) IOMalloc(sizeof (*physMapping));
-  if (physMapping == NULL) {
-    return kIOReturnNoMemory;
-  }
-
-  physMapping->transferDesc = transfer;
-  physMapping->physAddr     = transfer->physAddr;
-
-  physMapping->nextMapping = _physMappingHeadPtr;
-  _physMappingHeadPtr      = physMapping;
-
-  return kIOReturnSuccess;
-}
-
-//
-// Gets the transfer data for the specified physical address.
-//
-OHCITransferData *WiiOHCI::getTDFromPhysMapping(UInt32 physAddr) {
-  OHCIPhysicalMapping *physMapping;
-
-  physMapping = _physMappingHeadPtr;
-  while (physMapping != NULL) {
-    if (physMapping->physAddr == physAddr) {
-      return physMapping->transferDesc;
+  //
+  // Search general transfer buffers for matching physical address.
+  //
+  genTransferBuffer = _genTransferBufferHeadPtr;
+  while (genTransferBuffer != NULL) {
+    genTransfer = genTransferBuffer->getGenTransferFromPhysAddr(physAddr);
+    if (genTransfer != NULL) {
+      return genTransfer;
     }
 
-    physMapping = physMapping->nextMapping;
+    genTransferBuffer = genTransferBuffer->getNextBuffer();
   }
 
   return NULL;
@@ -78,134 +63,56 @@ OHCITransferData *WiiOHCI::getTDFromPhysMapping(UInt32 physAddr) {
 // Allocates and adds a page of new endpoints to the free list.
 //
 IOReturn WiiOHCI::allocateFreeEndpoints(void) {
-  OHCIEndpointDescriptor  *hcEndpointDesc;
-  IOPhysicalAddress       hcEndpointDescPhysAddr;
+  WiiOHCIEndpointBuffer   *endpointBuffer;
   OHCIEndpointData        *endpoint;
-  IOReturn                status;
 
-  //
-  // Allocate host controller endpoint descriptors out of a page.
-  // Wii platforms are not cache coherent, host controller structures must be non-cacheable.
-  //
-  hcEndpointDesc = (OHCIEndpointDescriptor*) IOMallocContiguous(PAGE_SIZE, PAGE_SIZE, &hcEndpointDescPhysAddr);
-  if (hcEndpointDesc == NULL) {
+  endpointBuffer = WiiOHCIEndpointBuffer::endpointBuffer();
+  if (endpointBuffer == NULL) {
     return kIOReturnNoMemory;
   }
-  status = IOSetProcessorCacheMode(kernel_task, (IOVirtualAddress) hcEndpointDesc, PAGE_SIZE, kIOInhibitCache);
-  if (status != kIOReturnSuccess) {
-    return status;
-  }
+  endpointBuffer->setNextBuffer(_endpointBufferHeadPtr);
+  _endpointBufferHeadPtr = endpointBuffer;
 
   //
-  // Allocate endpoints, adding in the allocated host controller data.
-  // Each one is added to the free list.
+  // Add the endpoints to the free list.
   //
-  for (UInt32 i = 0; i < (PAGE_SIZE / sizeof (OHCIEndpointDescriptor)); i++) {
-    endpoint = (OHCIEndpointData*) IOMalloc(sizeof (*endpoint));
-    if (endpoint == NULL) {
-      return kIOReturnNoMemory;
-    }
-    endpoint->ed       = hcEndpointDesc;
-    endpoint->physAddr = hcEndpointDescPhysAddr;
+  for (UInt32 i = 0; i < kWiiOHCIEndpointsPerBuffer; i++) {
+    endpoint = endpointBuffer->getEndpoint(i);
 
     endpoint->nextEndpoint = _freeEndpointHeadPtr;
     _freeEndpointHeadPtr   = endpoint;
-
-    hcEndpointDesc++;
-    hcEndpointDescPhysAddr += sizeof (OHCIEndpointDescriptor);
   }
 
   return kIOReturnSuccess;
 }
 
 //
-// Allocates and adds a page of new transfers to the free list.
+// Allocates and adds a page of new general transfers to the free list.
 //
-IOReturn WiiOHCI::allocateFreeTransfers(bool mem2) {
-  OHCITransferDescriptor  *hcTransferDesc;
-  IOPhysicalAddress       hcTransferDescPhysAddr;
-  OHCITransferData        *transfer;
-  IORangeScalar           mem2PhysAddr;
-  IOPhysicalSegment       seg;
-  IOReturn                status;
+IOReturn WiiOHCI::allocateFreeGenTransfers(bool mem2) {
+  WiiOHCIGenTransferBuffer  *genTransferBuffer;
+  OHCIGenTransferData       *genTransfer;
 
-  //
-  // Allocate host controller transfer descriptors out of a page.
-  // Wii platforms are not cache coherent, host controller structures must be non-cacheable.
-  //
-  hcTransferDesc = (OHCITransferDescriptor*) IOMallocContiguous(PAGE_SIZE, PAGE_SIZE, &hcTransferDescPhysAddr);
-  if (hcTransferDesc == NULL) {
+  genTransferBuffer = WiiOHCIGenTransferBuffer::genTransferBuffer();
+  if (genTransferBuffer == NULL) {
     return kIOReturnNoMemory;
   }
-  status = IOSetProcessorCacheMode(kernel_task, (IOVirtualAddress) hcTransferDesc, PAGE_SIZE, kIOInhibitCache);
-  if (status != kIOReturnSuccess) {
-    return status;
-  }
+  genTransferBuffer->setNextBuffer(_genTransferBufferHeadPtr);
+  _genTransferBufferHeadPtr = genTransferBuffer;
 
   //
-  // Allocate transfers, adding in the allocated host controller data.
-  // Each one is added to the free list.
+  // Add the endpoints to the free list.
   //
-  for (UInt32 i = 0; i < (PAGE_SIZE / sizeof (OHCITransferDescriptor)); i++) {
-    transfer = (OHCITransferData*) IOMalloc(sizeof (*transfer));
-    if (transfer == NULL) {
-      return kIOReturnNoMemory;
-    }
-    transfer->td       = hcTransferDesc;
-    transfer->physAddr = hcTransferDescPhysAddr;
+  for (UInt32 i = 0; i < kWiiOHCIGenTransfersPerBuffer; i++) {
+    genTransfer = genTransferBuffer->getGenTransfer(i);
 
-    //
-    // Create a mapping so we can find this one later from only the physical address.
-    //
-    status = createPhysTDMapping(transfer);
-    if (status != kIOReturnSuccess) {
-      return status;
-    }
-
-    //
-    // Create temporary buffer mapping from MEM2 if on Wii.
-    // Some transfer descriptors will be created in MEM2 for the last one in a transfer.
-    // TODO
-    if (mem2 && (_mem2Allocator != NULL)) {
-      if (!_mem2Allocator->allocate(kWiiOHCITempBufferSize, &mem2PhysAddr, kOHCITransferDescriptorAlignment)) {
-        return NULL; // TODO
-      }
-      transfer->tmpBuffer = IOMemoryDescriptor::withPhysicalAddress(mem2PhysAddr, kWiiOHCITempBufferSize, kIODirectionInOut);
-      if (transfer->tmpBuffer == NULL) {
-        WIIDBGLOG("Failed to allocate a buffer");
-        return NULL;
-      }
-      transfer->tmpBufferPtr = (void*) transfer->tmpBuffer->map(kIOMapInhibitCache)->getVirtualAddress();
-      transfer->mem2         = true;
-
-      transfer->nextTransfer   = _freeMem2TransferHeadPtr;
-      _freeMem2TransferHeadPtr = transfer;
-
-    //
-    // Wii U still needs double buffers due to cache requirements, but can be in any memory location.
-    //
+    if (mem2) {
+      genTransfer->nextTransfer   = _freeGenTransferMem2HeadPtr;
+      _freeGenTransferMem2HeadPtr = genTransfer;
     } else {
-      //
-      // Allocate bounce buffer.
-      // Wii platforms are not cache coherent, host controller structures must be non-cacheable.
-      // Need to allocate an entire page at a time to ensure nothing else will occupy this cache-inhibited area.
-      //
-      transfer->tmpBufferPtr = IOMallocContiguous(PAGE_SIZE, PAGE_SIZE, &transfer->tmpBufferPhysAddr);
-      if (transfer->tmpBufferPtr == NULL) {
-        return kIOReturnNoMemory;
-      }
-      status = IOSetProcessorCacheMode(kernel_task, (IOVirtualAddress) transfer->tmpBufferPtr, PAGE_SIZE, kIOInhibitCache);
-      if (status != kIOReturnSuccess) {
-        return status;
-      }
-      transfer->mem2 = false;
-
-      transfer->nextTransfer = _freeTransferHeadPtr;
-      _freeTransferHeadPtr   = transfer;
+      genTransfer->nextTransfer = _freeGenTransferHeadPtr;
+      _freeGenTransferHeadPtr   = genTransfer;
     }
-
-    hcTransferDesc++;
-    hcTransferDescPhysAddr += sizeof (OHCITransferDescriptor);
   }
 
   return kIOReturnSuccess;
@@ -214,7 +121,7 @@ IOReturn WiiOHCI::allocateFreeTransfers(bool mem2) {
 //
 // Gets a free endpoint from the free linked list.
 //
-OHCIEndpointData *WiiOHCI::getFreeEndpoint(void) {
+OHCIEndpointData *WiiOHCI::getFreeEndpoint(bool isochronous) {
   OHCIEndpointData *endpoint;
 
   if (_freeEndpointHeadPtr == NULL) {
@@ -225,46 +132,47 @@ OHCIEndpointData *WiiOHCI::getFreeEndpoint(void) {
   endpoint = _freeEndpointHeadPtr;
 
   //
-  // Adjust linkage for remaining free EDs.
+  // Adjust linkage for remaining free endpoints.
   //
   _freeEndpointHeadPtr   = endpoint->nextEndpoint;
   endpoint->nextEndpoint = NULL;
+  endpoint->isochronous  = isochronous;
 
   return endpoint;
 }
 
 //
-// Gets a free transfer from the free linked list.
+// Gets a free general transfer from the free linked list.
 //
-OHCITransferData *WiiOHCI::getFreeTransfer(bool requireMem2) {
-  OHCITransferData *transfer;
+OHCIGenTransferData *WiiOHCI::getFreeGenTransfer(bool mem2) {
+  OHCIGenTransferData *transfer;
 
-  if (requireMem2) {
-    if (_freeMem2TransferHeadPtr == NULL) {
-      if (allocateFreeTransfers(true) != kIOReturnSuccess) {
+  if (mem2) {
+    if (_freeGenTransferMem2HeadPtr == NULL) {
+      if (allocateFreeGenTransfers(true) != kIOReturnSuccess) {
         return NULL;
       }  
     }
-    transfer = _freeMem2TransferHeadPtr;
+    transfer = _freeGenTransferMem2HeadPtr;
 
     //
-    // Adjust linkage for remaining free TDs.
+    // Adjust linkage for remaining free general transfers.
     //
-    _freeMem2TransferHeadPtr = transfer->nextTransfer;
-    transfer->nextTransfer   = NULL;
+    _freeGenTransferMem2HeadPtr = transfer->nextTransfer;
+    transfer->nextTransfer      = NULL;
   } else {
-    if (_freeTransferHeadPtr == NULL) {
-      if (allocateFreeTransfers(false) != kIOReturnSuccess) {
+    if (_freeGenTransferHeadPtr == NULL) {
+      if (allocateFreeGenTransfers(false) != kIOReturnSuccess) {
         return NULL;
       }  
     }
-    transfer = _freeTransferHeadPtr;
+    transfer = _freeGenTransferHeadPtr;
 
     //
-    // Adjust linkage for remaining free TDs.
+    // Adjust linkage for remaining free general transfers.
     //
-    _freeTransferHeadPtr   = transfer->nextTransfer;
-    transfer->nextTransfer = NULL;
+    _freeGenTransferHeadPtr = transfer->nextTransfer;
+    transfer->nextTransfer  = NULL;
   }
 
   return transfer;
@@ -277,22 +185,26 @@ void WiiOHCI::returnEndpoint(OHCIEndpointData *endpoint) {
   //
   // Remove the tail transfer.
   //
-  returnTransfer(endpoint->tailTransfer);
+  if (endpoint->isochronous) {
+    // TODO
+  } else {
+    returnGenTransfer(endpoint->genTransferTail);
+  }
 
   endpoint->nextEndpoint = _freeEndpointHeadPtr;
   _freeEndpointHeadPtr   = endpoint;
 }
 
 //
-// Returns a transfer to the free linked list.
+// Returns a genernal transfer to the free linked list.
 //
-void WiiOHCI::returnTransfer(OHCITransferData *transfer) {
-  if (transfer->mem2) {
-    transfer->nextTransfer   = _freeMem2TransferHeadPtr;
-    _freeMem2TransferHeadPtr = transfer;
+void WiiOHCI::returnGenTransfer(OHCIGenTransferData *genTransfer) {
+  if (genTransfer->mem2) {
+    genTransfer->nextTransfer   = _freeGenTransferMem2HeadPtr;
+    _freeGenTransferMem2HeadPtr = genTransfer;
   } else {
-    transfer->nextTransfer   = _freeTransferHeadPtr;
-    _freeTransferHeadPtr     = transfer;
+    genTransfer->nextTransfer   = _freeGenTransferHeadPtr;
+    _freeGenTransferHeadPtr     = genTransfer;
   }
 }
 
@@ -567,15 +479,15 @@ OHCIEndpointData *WiiOHCI::getInterruptEndpointHead(UInt8 pollingRate) {
 //
 IOReturn WiiOHCI::addNewEndpoint(UInt8 functionNumber, UInt8 endpointNumber, UInt16 maxPacketSize,
                                  UInt8 speed, UInt8 direction, OHCIEndpointData *endpointHeadPtr,
-                                 bool isIsoTransfer) {
-  OHCIEndpointData  *endpoint;
-  OHCITransferData  *transferTail;
-  UInt32            flags;
+                                 bool isochronous) {
+  OHCIEndpointData    *endpoint;
+  OHCIGenTransferData *genTransferTail;
+  UInt32              flags;
 
   //
   // Get a free endpoint.
   //
-  endpoint = getFreeEndpoint();
+  endpoint = getFreeEndpoint(isochronous);
   if (endpoint == NULL) {
     return kIOReturnNoMemory;
   }
@@ -587,7 +499,7 @@ IOReturn WiiOHCI::addNewEndpoint(UInt8 functionNumber, UInt8 endpointNumber, UIn
     | ((endpointNumber << kOHCIEDFlagsEndpointShift) & kOHCIEDFlagsEndpointMask)
     | ((speed == kUSBDeviceSpeedLow) ? kOHCIEDFlagsLowSpeed : 0)
     | ((maxPacketSize << kOHCIEDFlagsMaxPktSizeShift) & kOHCIEDFlagsMaxPktSizeMask)
-    | (isIsoTransfer ? kOHCIEDFlagsIsochronous: 0);
+    | (isochronous ? kOHCIEDFlagsIsochronous: 0);
 
   if (direction == kUSBOut) {
     flags |= kOHCIEDFlagsDirectionOut;
@@ -599,22 +511,26 @@ IOReturn WiiOHCI::addNewEndpoint(UInt8 functionNumber, UInt8 endpointNumber, UIn
   //
   // Create initial transfer tail.
   //
-  transferTail = getFreeTransfer(false);
-  if (transferTail == NULL) {
-    returnEndpoint(endpoint);
-    return kIOReturnNoMemory;
+  if (isochronous) {
+
+  } else {
+    genTransferTail = getFreeGenTransfer(false);
+    if (genTransferTail == NULL) {
+      returnEndpoint(endpoint);
+      return kIOReturnNoMemory;
+    }
+
+    genTransferTail->td->nextTDPhysAddr = 0;
+    genTransferTail->nextTransfer       = NULL;
+
+    //
+    // Set new transfer as head and tail to indicate no active transfers.
+    //
+    endpoint->genTransferHead    = genTransferTail;
+    endpoint->genTransferTail    = genTransferTail;
+    endpoint->ed->headTDPhysAddr = HostToUSBLong(genTransferTail->physAddr);
+    endpoint->ed->tailTDPhysAddr = HostToUSBLong(genTransferTail->physAddr);
   }
-
-  transferTail->td->nextTDPhysAddr = 0;
-  transferTail->nextTransfer       = NULL;
-
-  //
-  // Set new transfer as head and tail to indicate no active transfers.
-  //
-  endpoint->headTransfer       = transferTail;
-  endpoint->tailTransfer       = transferTail;
-  endpoint->ed->headTDPhysAddr = HostToUSBLong(transferTail->physAddr);
-  endpoint->ed->tailTDPhysAddr = HostToUSBLong(transferTail->physAddr);
 
   //
   // Insert new endpoint into linked list.
@@ -658,8 +574,8 @@ IOReturn WiiOHCI::removeEndpoint(UInt8 functionNumber, UInt8 endpointNumber,
 // Removes and completes all transfers linked to the specified endpoint.
 //
 void WiiOHCI::removeEndpointTransfers(OHCIEndpointData *endpoint) {
-  OHCITransferData  *currTransfer;
-  OHCITransferData  *nextTransfer;
+  OHCIGenTransferData  *currGenTransfer;
+  OHCIGenTransferData  *nextGenTransfer;
   UInt32            bufferSizeRemaining;
 
   WIIDBGLOG("Removing all TDs for endpoint phys: 0x%X", endpoint->physAddr);
@@ -668,49 +584,55 @@ void WiiOHCI::removeEndpointTransfers(OHCIEndpointData *endpoint) {
   // Get the current head and remove entire chain.
   //
   WIIDBGLOG("TD head phys: 0x%X, tail phys: 0x%X", USBToHostLong(endpoint->ed->headTDPhysAddr), USBToHostLong(endpoint->ed->tailTDPhysAddr));
-  currTransfer = getTDFromPhysMapping(USBToHostLong(endpoint->ed->headTDPhysAddr) & kOHCIEDTDHeadMask);
-  endpoint->headTransfer       = endpoint->tailTransfer;
+  if (endpoint->isochronous) {
+    // TODO
+    return;
+  } else {
+    currGenTransfer = getGenTransferFromPhys(USBToHostLong(endpoint->ed->headTDPhysAddr) & kOHCIEDTDHeadMask);
+  }
+  endpoint->genTransferHead    = endpoint->genTransferTail;
   endpoint->ed->headTDPhysAddr = endpoint->ed->tailTDPhysAddr;
 
   //
   // Iterate through chain.
   //
   bufferSizeRemaining = 0;
-  while (currTransfer != endpoint->tailTransfer) {
-    if (currTransfer == NULL) {
-      // Shouldn't occur.
-      WIISYSLOG("Got an invalid TD here");
-      return;
-    }
+  if (endpoint->isochronous) {
+    // TODO
+    return;
+  } else {
+    while (currGenTransfer != endpoint->genTransferTail) {
+      if (currGenTransfer == NULL) {
+        // Shouldn't occur.
+        WIISYSLOG("Got an invalid TD here");
+        return;
+      }
 
-    WIIDBGLOG("Unlinking TD phys 0x%X, next 0x%X, buf %p", currTransfer->physAddr,
-      USBToHostLong(currTransfer->td->nextTDPhysAddr), currTransfer->srcBuffer);
+      WIIDBGLOG("Unlinking TD phys 0x%X, next 0x%X, buf %p", currGenTransfer->physAddr,
+        USBToHostLong(currGenTransfer->td->nextTDPhysAddr), currGenTransfer->srcBuffer);
 
-    if (currTransfer->srcBuffer != NULL) {
-      OSSafeReleaseNULL(currTransfer->srcBuffer);
-    }
+      if (currGenTransfer->srcBuffer != NULL) {
+        OSSafeReleaseNULL(currGenTransfer->srcBuffer);
+      }
 
-    if (currTransfer->type == kOHCITransferTypeIsochronous) {
-      // TODO
-    } else {
       //
       // No data actually was transfered, so need to account for all buffers in the chain.
       //
-      if (USBToHostLong(currTransfer->td->currentBufferPtrPhysAddr) != 0) {
-        bufferSizeRemaining += USBToHostLong(currTransfer->td->bufferEndPhysAddr) - USBToHostLong(currTransfer->td->currentBufferPtrPhysAddr) + 1;
+      if (USBToHostLong(currGenTransfer->td->currentBufferPtrPhysAddr) != 0) {
+        bufferSizeRemaining += USBToHostLong(currGenTransfer->td->bufferEndPhysAddr) - USBToHostLong(currGenTransfer->td->currentBufferPtrPhysAddr) + 1;
       }
 
       //
       // Invoke completion for final transfer.
       //
-      if (currTransfer->last) {
-        Complete(currTransfer->completion.gen, kIOReturnAborted, bufferSizeRemaining);
+      if (currGenTransfer->last) {
+        Complete(currGenTransfer->completion, kIOReturnAborted, bufferSizeRemaining);
         bufferSizeRemaining = 0;
       }
-    }
 
-    nextTransfer = getTDFromPhysMapping(USBToHostLong(currTransfer->td->nextTDPhysAddr));
-    returnTransfer(currTransfer);
-    currTransfer = nextTransfer;
+      nextGenTransfer = getGenTransferFromPhys(USBToHostLong(currGenTransfer->td->nextTDPhysAddr));
+      returnGenTransfer(currGenTransfer);
+      currGenTransfer = nextGenTransfer;
+    }
   }
 }

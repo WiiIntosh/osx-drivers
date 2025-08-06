@@ -19,11 +19,13 @@ bool WiiOHCI::init(OSDictionary *dictionary) {
   _mem2Allocator          = NULL;
   _baseAddr               = NULL;
   _interruptEventSource   = NULL;
-  _physMappingHeadPtr     = NULL;
 
-  _freeEndpointHeadPtr     = NULL;
-  _freeTransferHeadPtr     = NULL;
-  _freeMem2TransferHeadPtr = NULL;
+  _endpointBufferHeadPtr  = NULL;
+  _freeEndpointHeadPtr    = NULL;
+
+  _genTransferBufferHeadPtr   = NULL;
+  _freeGenTransferHeadPtr     = NULL;
+  _freeGenTransferMem2HeadPtr = NULL;
 
   _rootHubInterruptTransLock = IOLockAlloc();
   if (_rootHubInterruptTransLock == NULL) {

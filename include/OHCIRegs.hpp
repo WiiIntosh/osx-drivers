@@ -163,7 +163,7 @@
 //
 // OHCI Host Controller Communications Area.
 //
-// All OHCI controller fields must be little endian.
+// All fields must be little endian.
 // This structure must be 256-byte aligned.
 //
 #define kOHCINumInterruptHeads   32
@@ -182,11 +182,13 @@ typedef struct {
 
 OSCompileAssert(sizeof (OHCIHostControllerCommArea) == 256);
 
-struct OHCITransferData;
+struct OHCIGenTransferData;
+struct OHCIIsoTransferData;
 
 //
 // OHCI endpoint descriptor.
 //
+// All fields must be little endian.
 // This structure must be 16-byte aligned.
 //
 #define kOHCIEndpointDescriptorAlignment    0x10
@@ -203,19 +205,32 @@ typedef struct {
 OSCompileAssert(sizeof (OHCIEndpointDescriptor) == kOHCIEndpointDescriptorAlignment);
 
 //
-// OHCI endpoint descriptor driver-only data.
+// OHCI endpoint data.
 //
 typedef struct OHCIEndpointData {
   // OHCI endpoint descriptor used by the host controller.
   OHCIEndpointDescriptor  *ed;
-  // Physical address of this endpoint descriptor.
+  // Physical address of the endpoint descriptor.
   UInt32                  physAddr;
-  // Pointer to the last transfer descriptor linked to this endpoint.
-  struct OHCITransferData *tailTransfer;
-  // Pointer to the first transfer descriptor linked to this endpoint.
-  struct OHCITransferData *headTransfer;
+  // Isochronous endpoint?
+  bool                    isochronous;
+  // Pointer to the head of the transfer data linked list.
+  union {
+    struct OHCIGenTransferData   *genTransferHead;
+    struct OHCIIsoTransferData   *isoTransferHead;
+  };
+  // Pointer to the tail of the transfer data linked list.
+  union {
+    struct OHCIGenTransferData   *genTransferTail;
+    struct OHCIIsoTransferData   *isoTransferTail;
+  };
   // Pointer to the next endpoint.
   struct OHCIEndpointData *nextEndpoint;
+
+  // Pointer to the last transfer data linked to this endpoint.
+//  struct OHCITransferData *tailTransfer;
+  // Pointer to the first transfer data linked to this endpoint.
+//  struct OHCITransferData *headTransfer;
 } OHCIEndpointData;
 
 //
@@ -281,85 +296,109 @@ typedef struct {
 #define kOHCIGenTDFlagsConditionCodeMask      BITRange(28, 31)
 
 //
-// OHCI transfer descriptor.
+// OHCI general (control, int, bulk) transfer descriptor.
 //
-// This structure must be 32-byte aligned.
+// All fields must be little endian.
+// This structure must be 16-byte aligned.
 //
-#define kOHCITransferDescriptorAlignment    0x20
-typedef struct OHCITransferDescriptor {
+#define kOHCIGenTransferDescriptorAlignment    0x10
+typedef struct {
   // Transfer descriptor flags.
   volatile UInt32 flags;
-  union {
-    // Current buffer pointer physical address (general transfers).
-    volatile UInt32 currentBufferPtrPhysAddr;
-    // Buffer page 0 (isochronous transfers).
-    volatile UInt32 bufferPage0;
-  };
+  // Current buffer pointer physical address.
+  volatile UInt32 currentBufferPtrPhysAddr;
   // Physical address of next transfer descriptor.
   volatile UInt32 nextTDPhysAddr;
   // Physical address of the last byte in this transfer descriptor's buffer.
   volatile UInt32 bufferEndPhysAddr;
-  union {
-    // Additional controller data for isochronous transfers.
-    struct {
-      // Packet status words (isochronous transfers).
-      volatile UInt16 packetStatus[8];
-    };
-  };
-} OHCITransferDescriptor;
-OSCompileAssert(sizeof (OHCITransferDescriptor) == kOHCITransferDescriptorAlignment);
+} OHCIGenTransferDescriptor;
+OSCompileAssert(sizeof (OHCIGenTransferDescriptor) == kOHCIGenTransferDescriptorAlignment);
 
 //
-// OHCI transfer driver-only data.
+// OHCI isochronous transfer descriptor.
 //
-typedef struct OHCITransferData {
+// All fields must be little endian.
+// This structure must be 32-byte aligned.
+//
+#define kOHCIIsoTransferDescriptorAlignment    0x20
+typedef struct {
+  // Transfer descriptor flags.
+  volatile UInt32 flags;
+  // Buffer page 0.
+  volatile UInt32 bufferPage0;
+  // Physical address of next transfer descriptor.
+  volatile UInt32 nextTDPhysAddr;
+  // Physical address of the last byte in this transfer descriptor's buffer.
+  volatile UInt32 bufferEndPhysAddr;
+  // Packet status words.
+  volatile UInt16 packetStatus[8];
+} OHCIIsoTransferDescriptor;
+OSCompileAssert(sizeof (OHCIIsoTransferDescriptor) == kOHCIIsoTransferDescriptorAlignment);
+
+//
+// OHCI general transfer data.
+//
+typedef struct OHCIGenTransferData {
   // OHCI transfer descriptor used by the host controller.
-  OHCITransferDescriptor  *td;
-  // Physical address of this transfer descriptor.
-  UInt32                  physAddr;
-  // Pointer to next linked transfer.
-  struct OHCITransferData *nextTransfer;
-  // Type of transfer.
-  UInt8                   type;
+  OHCIGenTransferDescriptor   *td;
+  // Physical address of the transfer descriptor.
+  UInt32                      physAddr;
+  // Pointer to next linked general transfer.
+  struct OHCIGenTransferData  *nextTransfer;
+
   // Is transfer the last for a transaction.
-  bool                    last;
+  bool  last;
   // Is temporary buffer in MEM2?
-  bool                    mem2;
+  bool  mem2;
 
   // Temporary buffer descriptor for this transfer.
-  IOMemoryDescriptor        *tmpBuffer;
+  IOMemoryDescriptor  *tmpBuffer;
   // Temporary buffer physical address.
-  IOPhysicalAddress         tmpBufferPhysAddr;
+  IOPhysicalAddress   tmpBufferPhysAddr;
   // Temporary buffer pointer mapped into kernel memory.
-  void                      *tmpBufferPtr;
+  void                *tmpBufferPtr;
   // Used temporary buffer size.
-  UInt32                    actualBufferSize;
+  UInt32              actualBufferSize;
   // Original buffer descriptor.
-  IOMemoryDescriptor        *srcBuffer;
+  IOMemoryDescriptor  *srcBuffer;
 
   // Completion callback.
-  union {
-    IOUSBCompletion     gen;
-    IOUSBIsocCompletion iso;
-  } completion;
+  IOUSBCompletion     completion;
+} OHCIGenTransferData;
+
+//
+// OHCI isochronous transfer data.
+//
+typedef struct OHCIIsoTransferData {
+  // OHCI transfer descriptor used by the host controller.
+  OHCIIsoTransferDescriptor   *td;
+  // Physical address of the transfer descriptor.
+  UInt32                      physAddr;
+  // Pointer to next linked general transfer.
+  struct OHCIIsoTransferData  *nextTransfer;
+
+  // Is transfer the last for a transaction.
+  bool  last;
+  // Is temporary buffer in MEM2?
+  bool  mem2;
+
+  // Temporary buffer descriptor for this transfer.
+  IOMemoryDescriptor  *tmpBuffer;
+  // Temporary buffer physical address.
+  IOPhysicalAddress   tmpBufferPhysAddr;
+  // Temporary buffer pointer mapped into kernel memory.
+  void                *tmpBufferPtr;
+  // Used temporary buffer size.
+  UInt32              actualBufferSize;
+  // Original buffer descriptor.
+  IOMemoryDescriptor  *srcBuffer;
+
+  // Completion callback.
+  IOUSBIsocCompletion completion;
   // Isochronous frame.
   IOUSBIsocFrame      *isoFrame;
   // Isochronous frame number.
   UInt32              isoFrameNum;
-} OHCITransferData;
-
-#define kOHCITransferTypeControl      0
-#define kOHCITransferTypeInterrupt    1
-#define kOHCITransferTypeBulk         2
-#define kOHCITransferTypeIsochronous  3
-
-//
-// Transfer descriptor to physical address mapping pair.
-//
-typedef struct OHCIPhysicalMapping {
-  UInt32                      physAddr;
-  OHCITransferData            *transferDesc;
-  struct OHCIPhysicalMapping  *nextMapping;
-} OHCIPhysicalMapping;
+} OHCIIsoTransferData;
 
 #endif

@@ -17,7 +17,7 @@
 #include "WiiCommon.hpp"
 #include "OHCIRegs.hpp"
 
-#define kWiiOHCITempBufferSize      PAGE_SIZE
+#define kWiiOHCITempBufferSize      0x200
 
 //
 // Total interrupt nodes in tree.
@@ -33,6 +33,71 @@
 #define kWiiOHCIEndpointTypeBulk                BIT2
 #define kWiiOHCIEndpointTypeIsochronous         BIT3
 #define kWiiOHCIEndpointTypeAll                 BITRange(0, 4)
+
+#define kWiiOHCIEndpointsPerBuffer        (PAGE_SIZE / sizeof (OHCIEndpointDescriptor))
+#define kWiiOHCIGenTransfersPerBuffer     (PAGE_SIZE / sizeof (OHCIGenTransferDescriptor))
+#define kWiiOHCIIsoTransfersPerBuffer     (PAGE_SIZE / sizeof (OHCIIsoTransferDescriptor))
+
+//
+// OHCI endpoint memory buffer.
+//
+class WiiOHCIEndpointBuffer : public OSObject {
+  OSDeclareDefaultStructors(WiiOHCIEndpointBuffer);
+  typedef OSObject super;
+
+private:
+  IOBufferMemoryDescriptor *_buffer;
+  IOPhysicalAddress       _physicalAddr;
+  OHCIEndpointDescriptor  *_endpointDescriptors;
+  WiiOHCIEndpointBuffer   *_nextBuffer;
+  OHCIEndpointData        _endpoints[kWiiOHCIEndpointsPerBuffer];
+
+public:
+  //
+  // Overrides.
+  //
+  void free();
+
+  //
+  // Buffer functions.
+  //
+  static WiiOHCIEndpointBuffer *endpointBuffer(void);
+  void setNextBuffer(WiiOHCIEndpointBuffer *buffer);
+  WiiOHCIEndpointBuffer *getNextBuffer(void);
+  IOPhysicalAddress getPhysAddr(void);
+  OHCIEndpointData *getEndpoint(UInt32 index);
+};
+
+//
+// OHCI general transfer memory buffer.
+//
+class WiiOHCIGenTransferBuffer : public OSObject {
+  OSDeclareDefaultStructors(WiiOHCIGenTransferBuffer);
+  typedef OSObject super;
+
+private:
+  IOBufferMemoryDescriptor  *_buffer;
+  IOPhysicalAddress         _physicalAddr;
+  OHCIGenTransferDescriptor *_genTransferDescriptors;
+  WiiOHCIGenTransferBuffer  *_nextBuffer;
+  OHCIGenTransferData       _genTransfers[kWiiOHCIGenTransfersPerBuffer];
+
+public:
+  //
+  // Overrides.
+  //
+  void free();
+
+  //
+  // Buffer functions.
+  //
+  static WiiOHCIGenTransferBuffer *genTransferBuffer(void);
+  void setNextBuffer(WiiOHCIGenTransferBuffer *buffer);
+  WiiOHCIGenTransferBuffer *getNextBuffer(void);
+  IOPhysicalAddress getPhysAddr(void);
+  OHCIGenTransferData *getGenTransfer(UInt32 index);
+  OHCIGenTransferData *getGenTransferFromPhysAddr(IOPhysicalAddress physAddr);
+};
 
 //
 // Represents the Wii OHCI USB controller.
@@ -50,14 +115,12 @@ private:
   IONaturalMemoryCursor   *_memoryCursor;
 
   //
-  // Descriptors.
+  // Endpoints.
   //
-  OHCIPhysicalMapping   *_physMappingHeadPtr;
+  WiiOHCIEndpointBuffer *_endpointBufferHeadPtr;
 
-  // Free descriptors.
+  // Free endpoints.
   OHCIEndpointData      *_freeEndpointHeadPtr;
-  OHCITransferData      *_freeTransferHeadPtr;
-  OHCITransferData      *_freeMem2TransferHeadPtr;
 
   // Control endpoints.
   OHCIEndpointData      *_controlEndpointHeadPtr;
@@ -69,6 +132,13 @@ private:
 
   // Interrupt endpoints.
   OHCIIntEndpoint       _interruptEndpoints[kWiiOHCIInterruptNodeCount];
+
+  //
+  // Transfers.
+  //
+  WiiOHCIGenTransferBuffer  *_genTransferBufferHeadPtr;
+  OHCIGenTransferData       *_freeGenTransferHeadPtr;
+  OHCIGenTransferData       *_freeGenTransferMem2HeadPtr;
 
   // HCCA.
   IOPhysicalAddress           _hccaPhysAddr;
@@ -112,14 +182,13 @@ private:
   // Descriptor functions.
   //
   IOReturn convertTDStatus(UInt8 ohciStatus);
-  IOReturn createPhysTDMapping(OHCITransferData *transfer);
-  OHCITransferData *getTDFromPhysMapping(UInt32 physAddr);
+  OHCIGenTransferData *getGenTransferFromPhys(IOPhysicalAddress physAddr);
   IOReturn allocateFreeEndpoints(void);
-  IOReturn allocateFreeTransfers(bool mem2);
-  OHCIEndpointData *getFreeEndpoint(void);
-  OHCITransferData *getFreeTransfer(bool requireMem2);
+  IOReturn allocateFreeGenTransfers(bool mem2);
+  OHCIEndpointData *getFreeEndpoint(bool isochronous = false);
+  OHCIGenTransferData *getFreeGenTransfer(bool mem2);
   void returnEndpoint(OHCIEndpointData *endpoint);
-  void returnTransfer(OHCITransferData *transfer);
+  void returnGenTransfer(OHCIGenTransferData *genTransfer);
 
   IOReturn initControlEndpoints(void);
   IOReturn initBulkEndpoints(void);
@@ -129,7 +198,7 @@ private:
   OHCIEndpointData *getInterruptEndpointHead(UInt8 pollingRate);
   IOReturn addNewEndpoint(UInt8 functionNumber, UInt8 endpointNumber, UInt16 maxPacketSize,
                           UInt8 speed, UInt8 direction, OHCIEndpointData *endpointHeadPtr,
-                          bool isIsoTransfer = false);
+                          bool isochronous = false);
   IOReturn removeEndpoint(UInt8 functionNumber, UInt8 endpointNumber,
                           OHCIEndpointData *endpointHeadPtr, OHCIEndpointData *endpointTailPtr);
   void removeEndpointTransfers(OHCIEndpointData *endpoint);
@@ -137,7 +206,7 @@ private:
   //
   // Transfers.
   //
-  IOReturn doGeneralTransfer(OHCIEndpointData *endpoint, UInt8 type, IOUSBCompletion completion,
+  IOReturn doGeneralTransfer(OHCIEndpointData *endpoint, IOUSBCompletion completion,
                              IOMemoryDescriptor *buffer, UInt32 bufferSize, UInt32 flags, UInt32 cmdBits);
   void completeTransferQueue(UInt32 headPhysAddr);
 
