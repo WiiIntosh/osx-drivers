@@ -128,7 +128,7 @@ WiiOHCIGenTransferBuffer *WiiOHCIGenTransferBuffer::genTransferBuffer(void) {
     //
     // Allocate temporary buffer.
     //
-    genTdBuffer->_genTransfers[i].tmpBuffer = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous, kWiiOHCITempBufferSize, 0x20);
+    genTdBuffer->_genTransfers[i].tmpBuffer = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous, kWiiOHCITempBufferSize, kWiiOHCITempBufferSize);
     if (genTdBuffer->_genTransfers[i].tmpBuffer == NULL) {
       return NULL;
     }

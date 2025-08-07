@@ -156,45 +156,51 @@ void WiiOHCI::completeTransferQueue(UInt32 headPhysAddr) {
     tdStatus = convertTDStatus(transferStatus);
     WIIDBGLOG("TD phys 0x%X, next 0x%X, stat: 0x%X, 0x%X", genTransferCurr->physAddr, USBToHostLong(genTransferCurr->td->nextTDPhysAddr), transferStatus, tdStatus);
 
-    if (tdStatus != kIOReturnSuccess) {
-      WIISYSLOG("Got an error here: 0x%X", tdStatus);
-    }
+    bufferSizeRemaining = getGenTransferBufferRemaining(genTransferCurr);
+    WIIDBGLOG("Transferred %u bytes (%u bytes left), ptr 0x%X end 0x%X",
+      genTransferCurr->actualBufferSize - bufferSizeRemaining, bufferSizeRemaining,
+      USBToHostLong(genTransferCurr->td->currentBufferPtrPhysAddr), USBToHostLong(genTransferCurr->td->bufferEndPhysAddr));
 
     //
-    // Copy data back into original buffer.
+    // Copy data back into original buffer if this was a read, and only if we actually transfered data.
     //
     if (genTransferCurr->srcBuffer != NULL) {
       if (genTransferCurr->srcBuffer->getDirection() & kIODirectionIn) {
         invalidateDataCache(genTransferCurr->tmpBufferPtr, genTransferCurr->actualBufferSize);
-        genTransferCurr->srcBuffer->writeBytes(0, genTransferCurr->tmpBufferPtr, genTransferCurr->actualBufferSize);
+        if ((genTransferCurr->actualBufferSize - bufferSizeRemaining) > 0) {
+          genTransferCurr->srcBuffer->writeBytes(0, genTransferCurr->tmpBufferPtr, genTransferCurr->actualBufferSize - bufferSizeRemaining);
+        }
       }
       OSSafeReleaseNULL(genTransferCurr->srcBuffer);
+      UInt32 *buf = (UInt32*)genTransferCurr->tmpBufferPtr;
+      WIIDBGLOG("%08X %08X %08X %08X %08X %08X %08X %08X",
+        USBToHostLong(buf[0]), USBToHostLong(buf[1]), USBToHostLong(buf[2]), USBToHostLong(buf[3]),
+        USBToHostLong(buf[4]), USBToHostLong(buf[5]), USBToHostLong(buf[6]), USBToHostLong(buf[7]));
+    }
+
+    if (tdStatus != kIOReturnSuccess) {
+      WIISYSLOG("Got an error here: 0x%X", tdStatus);
     }
 
     //
     // Invoke completion if present.
     //
     if (genTransferCurr->last) {
-      if (USBToHostLong(genTransferCurr->td->currentBufferPtrPhysAddr) == 0) {
-        bufferSizeRemaining = 0;
-      } else {
-        bufferSizeRemaining = USBToHostLong(genTransferCurr->td->bufferEndPhysAddr) - USBToHostLong(genTransferCurr->td->currentBufferPtrPhysAddr);
-      }
-
-      if (genTransferCurr->actualBufferSize != 0) {
-        WIIDBGLOG("Completing a transfer %u bytes (%u bytes left), end 0x%X",
-          genTransferCurr->actualBufferSize, bufferSizeRemaining, USBToHostLong(genTransferCurr->td->bufferEndPhysAddr));
-      } else {
-        WIIDBGLOG("Completing a transfer with no data");
-      }
-
+      WIIDBGLOG("Calling completion");
       Complete(genTransferCurr->completion, tdStatus, bufferSizeRemaining);
     } else {
       WIIDBGLOG("No completion");
+
+      //
+      // If there was an error, need to finish the rest of the chain.
+      //
+      if (tdStatus != kIOReturnSuccess) {
+        WIIDBGLOG("Completing short packet");
+        completeFailedEndpointGenTransfers(genTransferCurr->endpoint, tdStatus, bufferSizeRemaining);
+      }
     }
 
     genTransferNext = getGenTransferFromPhys(USBToHostLong(genTransferCurr->td->nextTDPhysAddr));
-
     returnGenTransfer(genTransferCurr);
     genTransferCurr = genTransferNext;
   }

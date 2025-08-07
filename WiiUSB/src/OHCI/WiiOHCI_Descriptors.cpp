@@ -60,6 +60,17 @@ OHCIGenTransferData *WiiOHCI::getGenTransferFromPhys(IOPhysicalAddress physAddr)
 }
 
 //
+// Gets the remaining buffer size, if any.
+//
+UInt32 WiiOHCI::getGenTransferBufferRemaining(OHCIGenTransferData *genTransfer) {
+  if (USBToHostLong(genTransfer->td->currentBufferPtrPhysAddr) == 0) {
+    return 0;
+  } else {
+    return USBToHostLong(genTransfer->td->bufferEndPhysAddr) - USBToHostLong(genTransfer->td->currentBufferPtrPhysAddr) + 1;
+  }
+}
+
+//
 // Allocates and adds a page of new endpoints to the free list.
 //
 IOReturn WiiOHCI::allocateFreeEndpoints(void) {
@@ -635,5 +646,62 @@ void WiiOHCI::removeEndpointTransfers(OHCIEndpointData *endpoint) {
       returnGenTransfer(currGenTransfer);
       currGenTransfer = nextGenTransfer;
     }
+  }
+}
+
+//
+// Removes all transfers up until and including one with a completion.
+//
+void WiiOHCI::completeFailedEndpointGenTransfers(OHCIEndpointData *endpoint, IOReturn tdStatus, UInt32 bufferSizeRemaining) {
+  OHCIGenTransferData  *currGenTransfer;
+  OHCIGenTransferData  *nextGenTransfer;
+
+  //
+  // Mark endpoint as skipped and wait until next frame.
+  //
+  endpoint->ed->flags |= HostToUSBLong(kOHCIEDFlagsSkip);
+  writeReg32(kOHCIRegIntStatus, kOHCIRegIntStatusStartOfFrame);
+  while ((readReg32(kOHCIRegIntStatus) & kOHCIRegIntStatusStartOfFrame) == 0) {
+    IODelay(10);
+  }
+
+  currGenTransfer = getGenTransferFromPhys(USBToHostLong(endpoint->ed->headTDPhysAddr) & kOHCIEDTDHeadMask);
+  while (currGenTransfer != endpoint->genTransferTail) {
+    if (currGenTransfer == NULL) {
+      // Shouldn't occur.
+      WIISYSLOG("Got an invalid TD here");
+      return;
+    }
+
+    //
+    // Unlink the transfer descriptor and get the buffer size.
+    //
+    endpoint->genTransferHead    = currGenTransfer->nextTransfer;
+    endpoint->ed->headTDPhysAddr = HostToUSBLong(currGenTransfer->nextTransfer->physAddr) | (endpoint->ed->headTDPhysAddr & ~(HostToUSBLong(kOHCIEDTDHeadMask)));
+    bufferSizeRemaining += getGenTransferBufferRemaining(currGenTransfer);
+
+    if (currGenTransfer->srcBuffer != NULL) {
+      OSSafeReleaseNULL(currGenTransfer->srcBuffer);
+    }
+
+    if (currGenTransfer->last) {
+      //
+      // For underruns, just pretend it didn't occur.
+      //
+      if (tdStatus == kIOReturnUnderrun) {
+        endpoint->ed->headTDPhysAddr &= ~(HostToUSBLong(kOHCIEDTDHeadHalted));
+        tdStatus = kIOReturnSuccess;
+      }
+
+      WIIDBGLOG("Completing failed transfer with %u bytes remaining", bufferSizeRemaining);
+      endpoint->ed->flags &= ~(HostToUSBLong(kOHCIEDFlagsSkip));
+      Complete(currGenTransfer->completion, tdStatus, bufferSizeRemaining);
+      returnGenTransfer(currGenTransfer);
+      return;
+    }
+
+    nextGenTransfer = getGenTransferFromPhys(USBToHostLong(currGenTransfer->td->nextTDPhysAddr));
+    returnGenTransfer(currGenTransfer);
+    currGenTransfer = nextGenTransfer;
   }
 }

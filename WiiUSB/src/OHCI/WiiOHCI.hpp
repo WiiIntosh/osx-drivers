@@ -183,6 +183,7 @@ private:
   //
   IOReturn convertTDStatus(UInt8 ohciStatus);
   OHCIGenTransferData *getGenTransferFromPhys(IOPhysicalAddress physAddr);
+  UInt32 getGenTransferBufferRemaining(OHCIGenTransferData *genTransfer);
   IOReturn allocateFreeEndpoints(void);
   IOReturn allocateFreeGenTransfers(bool mem2);
   OHCIEndpointData *getFreeEndpoint(bool isochronous = false);
@@ -202,6 +203,7 @@ private:
   IOReturn removeEndpoint(UInt8 functionNumber, UInt8 endpointNumber,
                           OHCIEndpointData *endpointHeadPtr, OHCIEndpointData *endpointTailPtr);
   void removeEndpointTransfers(OHCIEndpointData *endpoint);
+  void completeFailedEndpointGenTransfers(OHCIEndpointData *endpoint, IOReturn tdStatus, UInt32 bufferSizeRemaining);
 
   //
   // Transfers.
