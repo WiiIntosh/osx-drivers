@@ -41,13 +41,10 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointData *endpoint, IOUSBCompletion 
       //
       // Allocate a new tail general transfer.
       //
-      genTransferTail = getFreeGenTransfer(false);
+      genTransferTail = getFreeGenTransfer(endpoint, false);
       if (genTransferTail == NULL) {
         return kIOReturnNoMemory;
       }
-      genTransferTail->td->nextTDPhysAddr = 0;
-      genTransferTail->nextTransfer       = NULL;
-
       genTransferCurr = endpoint->genTransferTail;
 
       transferSize = (bufferRemaining > kWiiOHCITempBufferSize) ? kWiiOHCITempBufferSize : bufferRemaining;
@@ -100,14 +97,11 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointData *endpoint, IOUSBCompletion 
     //
     // Allocate a new general transfer.
     //
-    genTransferTail = getFreeGenTransfer(false);
+    genTransferTail = getFreeGenTransfer(endpoint, false);
     if (genTransferTail == NULL) {
       WIISYSLOG("Failed to allocate new TD");
       return kIOReturnNoMemory;
     }
-    genTransferTail->td->nextTDPhysAddr = 0;
-    genTransferTail->nextTransfer       = NULL;
-
     genTransferCurr = endpoint->genTransferTail;
 
     genTransferCurr->td->flags                    = HostToUSBLong(flags);

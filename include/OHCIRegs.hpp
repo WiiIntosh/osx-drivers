@@ -345,6 +345,8 @@ typedef struct OHCIGenTransferData {
   UInt32                      physAddr;
   // Pointer to next linked general transfer.
   struct OHCIGenTransferData  *nextTransfer;
+  // Pointer to parent endpoint.
+  OHCIEndpointData            *endpoint;
 
   // Is transfer the last for a transaction.
   bool  last;
@@ -376,6 +378,8 @@ typedef struct OHCIIsoTransferData {
   UInt32                      physAddr;
   // Pointer to next linked general transfer.
   struct OHCIIsoTransferData  *nextTransfer;
+  // Pointer to parent endpoint.
+  OHCIEndpointData            *endpoint;
 
   // Is transfer the last for a transaction.
   bool  last;

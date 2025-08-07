@@ -186,7 +186,7 @@ private:
   IOReturn allocateFreeEndpoints(void);
   IOReturn allocateFreeGenTransfers(bool mem2);
   OHCIEndpointData *getFreeEndpoint(bool isochronous = false);
-  OHCIGenTransferData *getFreeGenTransfer(bool mem2);
+  OHCIGenTransferData *getFreeGenTransfer(OHCIEndpointData *endpoint, bool mem2);
   void returnEndpoint(OHCIEndpointData *endpoint);
   void returnGenTransfer(OHCIGenTransferData *genTransfer);
 

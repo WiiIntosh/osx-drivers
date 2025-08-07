@@ -144,7 +144,7 @@ OHCIEndpointData *WiiOHCI::getFreeEndpoint(bool isochronous) {
 //
 // Gets a free general transfer from the free linked list.
 //
-OHCIGenTransferData *WiiOHCI::getFreeGenTransfer(bool mem2) {
+OHCIGenTransferData *WiiOHCI::getFreeGenTransfer(OHCIEndpointData *endpoint, bool mem2) {
   OHCIGenTransferData *transfer;
 
   if (mem2) {
@@ -174,6 +174,10 @@ OHCIGenTransferData *WiiOHCI::getFreeGenTransfer(bool mem2) {
     _freeGenTransferHeadPtr = transfer->nextTransfer;
     transfer->nextTransfer  = NULL;
   }
+
+  transfer->td->nextTDPhysAddr = 0;
+  transfer->nextTransfer       = NULL;
+  transfer->endpoint           = endpoint;
 
   return transfer;
 }
@@ -514,14 +518,11 @@ IOReturn WiiOHCI::addNewEndpoint(UInt8 functionNumber, UInt8 endpointNumber, UIn
   if (isochronous) {
 
   } else {
-    genTransferTail = getFreeGenTransfer(false);
+    genTransferTail = getFreeGenTransfer(endpoint, false);
     if (genTransferTail == NULL) {
       returnEndpoint(endpoint);
       return kIOReturnNoMemory;
     }
-
-    genTransferTail->td->nextTDPhysAddr = 0;
-    genTransferTail->nextTransfer       = NULL;
 
     //
     // Set new transfer as head and tail to indicate no active transfers.
