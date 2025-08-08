@@ -25,7 +25,7 @@
 			<key>IOMatchCategory</key>
 			<string>IOFramebuffer</string>
 			<key>IONameMatch</key>
-			<string>Wii,GX2</string>
+			<string>NTDOY,gx2</string>
 			<key>IOProbeScore</key>
 			<integer>80000</integer>
 			<key>IOProviderClass</key>
@@ -40,7 +40,7 @@
 			<key>IOMatchCategory</key>
 			<string>IOFramebuffer</string>
 			<key>IONameMatch</key>
-			<string>Wii,GX</string>
+			<string>NTDOY,gx</string>
 			<key>IOProbeScore</key>
 			<integer>1000</integer>
 			<key>IOProviderClass</key>
