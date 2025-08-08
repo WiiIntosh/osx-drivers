@@ -17,7 +17,7 @@
 #include "WiiCommon.hpp"
 #include "OHCIRegs.hpp"
 
-#define kWiiOHCITempBufferSize      0x200
+#define kWiiOHCITempBufferSize      0x800
 
 //
 // Total interrupt nodes in tree.

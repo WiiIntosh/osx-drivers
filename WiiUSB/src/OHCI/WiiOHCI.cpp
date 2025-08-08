@@ -57,19 +57,6 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
  // }
 
   //
-  // TODO: Disable EHCI routing and reset controller to give OHCI exclusive access using EHCI gets implemented.
-  //
-  IODeviceMemory *ehciMem = IODeviceMemory::withRange(0x0D040000, 0x100);
-  IOMemoryMap *ehciMap = ehciMem->map();
-  volatile void *ehciBase = (volatile void*) ehciMap->getVirtualAddress();
-  OSWriteBigInt32(ehciBase, 0x00, 0x2);
-  while (OSReadBigInt32(ehciBase, 0x00) & 0x2) {
-    IODelay(1);
-  }
-  WIIDBGLOG("EHCI is now reset.");
-  OSWriteBigInt32(ehciBase, 0x50, 0); // Disable routing to EHCI.
-
-  //
   // Map controller memory.
   //
   _memoryMap = provider->mapDeviceMemoryWithIndex(0);
