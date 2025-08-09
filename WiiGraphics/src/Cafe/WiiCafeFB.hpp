@@ -8,6 +8,7 @@
 #ifndef WiiCafeFB_hpp
 #define WiiCafeFB_hpp
 
+#include <IOKit/IOBufferMemoryDescriptor.h>
 #include <IOKit/graphics/IOFramebuffer.h>
 #include "WiiCommon.hpp"
 
@@ -22,6 +23,12 @@ class WiiCafeFB : public IOFramebuffer {
 private:
   IOMemoryMap         *_memoryMap;
   volatile void       *_baseAddr;
+  IODeviceMemory      *_fbMemory;
+
+  UInt32                    *_cursorBuffer;
+  IOBufferMemoryDescriptor  *_cursorHwDesc;
+  volatile UInt32           *_cursorHwPtr;
+  IOPhysicalAddress         _cursorHwPhysAddr;
 
   inline UInt32 readReg32(UInt32 offset) {
     return OSReadBigInt32(_baseAddr, offset);
@@ -45,6 +52,9 @@ public:
   UInt64 getPixelFormatsForDisplayMode(IODisplayModeID displayMode, IOIndex depth);
   IOReturn getPixelInformation(IODisplayModeID displayMode, IOIndex depth, IOPixelAperture aperture, IOPixelInformation *pixelInfo);
   IOReturn getCurrentDisplayMode(IODisplayModeID *displayMode, IOIndex *depth);
+  IOReturn getAttribute(IOSelect attribute, uintptr_t *value);
+  IOReturn setCursorImage(void *cursorImage);
+  IOReturn setCursorState(SInt32 x, SInt32 y, bool visible);
 };
 
 #endif
