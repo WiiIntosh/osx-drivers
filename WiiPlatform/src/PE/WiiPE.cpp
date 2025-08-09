@@ -22,15 +22,6 @@ void (*WiiInvalidateDataCacheFunc)(vm_offset_t, unsigned, int) = 0;
 #define ESPRESSO_PVR_HIGH       0x70010000
 
 //
-// Private function, but exported in all versions.
-// Used for remapping console on 10.2 and older.
-//
-extern "C" vm_offset_t ml_io_map(vm_offset_t phys_addr, vm_size_t size);
-
-#define mtdbatu(n, reg) asm volatile("mtdbatu " # n ", %0" : : "r" (reg))
-#define mtdbatl(n, reg) asm volatile("mtdbatl " # n ", %0" : : "r" (reg))
-
-//
 // Overrides IODTPlatformExpert::init().
 //
 bool WiiPE::init(OSDictionary *dictionary) {
@@ -64,50 +55,10 @@ bool WiiPE::start(IOService *provider) {
   _peNumBatteriesSupported = kStdDesktopNumBatteries;
 
   //
-  // Remap the framebuffer to be in noncached I/O memory if on 10.2 and older.
-  // 10.3 and newer always maps into noncached memory already.
-  //
-  /*if (getKernelVersion() < kKernelVersionPanther) {
-    getConsoleInfo(&videoInfo);
-    videoInfo.v_baseAddr = ml_io_map(videoInfo.v_baseAddr, videoInfo.v_height * videoInfo.v_rowBytes);
-    setConsoleInfo(&videoInfo, kPEEnableScreen);
-
-    WIISYSLOG("\033[31mC\033[32mO\033[33mL\033[34mO\033[35mR\033[0m console remapped to 0x%X", videoInfo.v_baseAddr);
-
-    //
-    // Ensure DBAT2 and DBAT3 are clear.
-    //
-    ints = ml_set_interrupts_enabled(false);
-    sync();
-    isync();
-
-    mtdbatl(2, BAT_INVALID);
-    mtdbatu(2, BAT_INVALID);
-    mtdbatl(3, BAT_INVALID);
-    mtdbatu(3, BAT_INVALID);
-
-    sync();
-    isync();
-    ml_set_interrupts_enabled(ints);
-  }*/
-
-  //
   // Get the kernel header and resolve required non-exported functions.
   //
   if (!findKernelMachHeader()) {
     return false;
-  }
-
-  _pmapFindPhysEntryFuncAddr = resolveKernelSymbol("_pmap_find_physentry");
-  if (_pmapFindPhysEntryFuncAddr == 0) {
-    return false;
-  }
-
-  if (getKernelVersion() == kKernelVersionJaguar) {
-    _mappingPhysInitFuncAddr = resolveKernelSymbol("_mapping_phys_init");
-    if (_mappingPhysInitFuncAddr == 0) {
-      return false;
-    }
   }
 
   WiiInvalidateDataCacheFunc = (void (*)(vm_offset_t, unsigned, int)) resolveKernelSymbol("_invalidate_dcache");

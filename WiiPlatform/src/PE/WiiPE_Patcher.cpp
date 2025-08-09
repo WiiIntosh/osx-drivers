@@ -11,37 +11,6 @@
 #include "WiiPE.hpp"
 
 //
-// phys_entry structure for 10.2.
-//
-typedef struct {
-	void          *phys_link; // Opaque.
-	unsigned int  pte1;
-} phys_entry_jaguar_t;
-
-//
-// phys_entry structure for 10.3 and newer.
-//
-#pragma pack(4)							/* Make sure the structure stays as we defined it */
-typedef struct {
-  addr64_t	ppLink;				/* Physical pointer to aliased mappings and flags */
-#define		ppLock		0x8000000000000000LL	/* Lock for alias chain */
-#define		ppN			0x4000000000000000LL	/* Not executable */
-#define		ppFlags		0x000000000000003FLL	/* Status and flags */
-#define		ppI			0x0000000000000020LL	/* Cache inhibited */
-#define		ppIb		58						/* Cache inhibited */
-#define		ppG			0x0000000000000010LL	/* Guarded */
-#define		ppGb		59						/* Guarded */
-#define		ppR			0x0000000000000008LL	/* Referenced */
-#define		ppRb		60						/* Referenced */
-#define		ppC			0x0000000000000004LL	/* Changed */
-#define		ppCb		61						/* Changed */
-#define		ppPP		0x0000000000000003LL	/* Protection */
-#define		ppPPb		62						/* Protection begin */
-#define		ppPPe		63						/* Protection end */
-} phys_entry_panther_t;
-#pragma pack()
-
-//
 // Search for and get the pointer to the kernel's Mach-O header.
 //
 bool WiiPE::findKernelMachHeader(void) {
@@ -146,30 +115,4 @@ UInt32 WiiPE::resolveKernelSymbol(const char *symbolName) {
 
   WIISYSLOG("Failed to locate symbol '%s'", symbolName);
   return 0;
-}
-
-//
-// Forces physical memory to be marked as cache inhibited (i.e. for graphics memory).
-//
-void WiiPE::setPhysMemoryCacheInhibit(UInt32 physAddr, UInt32 physLength) {
-  if (getKernelVersion() >= kKernelVersionPanther) {
-    ppnum_t paStart = physAddr >> 12;
-    ppnum_t paEnd   = paStart + (physLength / PAGE_SIZE);
-    ppnum_t paCurr = paStart;
-    while (paCurr <= paEnd) {
-      phys_entry_panther_t *physEntry = (*(phys_entry_panther_t* (*)(ppnum_t))_pmapFindPhysEntryFuncAddr)(paCurr);
-      physEntry->ppLink |= ppI | ppG;
-      paCurr++;
-    }
-  } else if (getKernelVersion() == kKernelVersionJaguar) {
-    vm_offset_t paStart = physAddr;
-    vm_offset_t paEnd   = paStart + physLength;
-    vm_offset_t paCurr = paStart;
-    while (paCurr <= paEnd) {
-      void *physEntry = (*(void* (*)(vm_offset_t))_pmapFindPhysEntryFuncAddr)(paCurr);
-      (*(void (*)(void *pp, unsigned int pa, unsigned int wimg))_mappingPhysInitFuncAddr)(physEntry, paCurr, PTE_WIMG_IO);
-      WIISYSLOG("Fixing 0x%X", paCurr);
-      paCurr += PAGE_SIZE;
-    }
-  }
 }

@@ -35,9 +35,6 @@ private:
   UInt8     *_strTab;
   UInt32    _strTabSize;
 
-  UInt32    _pmapFindPhysEntryFuncAddr;
-  UInt32    _mappingPhysInitFuncAddr;
-
   bool findKernelMachHeader(void);
   UInt32 resolveKernelSymbol(const char *symbolName);
 
@@ -57,7 +54,6 @@ public:
   //
   bool isPlatformCafe(void);
   IORangeAllocator *getMem2Allocator(void);
-  void setPhysMemoryCacheInhibit(UInt32 physAddr, UInt32 physLength);
 };
 
 #endif
