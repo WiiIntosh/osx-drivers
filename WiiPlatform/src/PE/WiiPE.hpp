@@ -44,16 +44,12 @@ public:
   //
   bool init(OSDictionary *dictionary = 0);
   bool start(IOService *provider);
+  IOReturn callPlatformFunction(const OSSymbol *functionName, bool waitForFunction,
+                                void *param1, void *param2, void *param3, void *param4);
   const char *deleteList(void);
   const char *excludeList(void);
   bool getMachineName(char *name, int maxLength);
   long getGMTTimeOfDay(void);
-
-  //
-  // Platform expert functions.
-  //
-  bool isPlatformCafe(void);
-  IORangeAllocator *getMem2Allocator(void);
 };
 
 #endif

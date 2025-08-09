@@ -11,7 +11,6 @@
 
 #include "WiiInterruptController.hpp"
 #include "WiiProcessorInterface.hpp"
-#include "WiiPE.hpp"
 
 OSDefineMetaClassAndStructors(WiiInterruptController, super);
 
@@ -34,19 +33,18 @@ bool WiiInterruptController::init(OSDictionary *dictionary) {
 bool WiiInterruptController::start(IOService *provider) {
   OSSymbol    *interruptControllerName;
   bool        vectorLockResult;
-  WiiPE       *wiiPE;
+  IOReturn    status;
 
   if (!super::start(provider)) {
     WIISYSLOG("super::start() returned false");
     return false;
   }
 
-  wiiPE = OSDynamicCast(WiiPE, getPlatform());
-  if (wiiPE == NULL) {
-    WIISYSLOG("Platform is not a Wii");
+  status = ((IOService*) getPlatform())->callPlatformFunction(kWiiFuncPlatformIsCafe, true, (void*) &_isCafe, NULL, NULL, NULL);
+  if (status != kIOReturnSuccess) {
+    WIISYSLOG("Failed to get platform type");
     return false;
   }
-  _isCafe = wiiPE->isPlatformCafe();
 
   //
   // Get the interrupt controller name.

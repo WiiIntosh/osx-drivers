@@ -5,9 +5,11 @@ all:
 	@$(MAKE) -C WiiGraphics all
 	@$(MAKE) -C WiiStorage all
 	@$(MAKE) -C WiiUSB all
+	@$(MAKE) -C WiiEXI all
 
 clean:
 	@$(MAKE) -C WiiPlatform clean
 	@$(MAKE) -C WiiGraphics clean
 	@$(MAKE) -C WiiStorage clean
 	@$(MAKE) -C WiiUSB clean
+	@$(MAKE) -C WiiEXI clean

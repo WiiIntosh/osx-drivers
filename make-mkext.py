@@ -93,7 +93,8 @@ def create_mkext(kexts):
 kexts = [ KextInfo('./WiiPlatform/build_kext/WiiPlatform.kext/Contents/Info.plist', './WiiPlatform/build_kext/WiiPlatform.kext/Contents/MacOS/WiiPlatform'),
           KextInfo('./WiiStorage/build_kext/WiiStorage.kext/Contents/Info.plist', './WiiStorage/build_kext/WiiStorage.kext/Contents/MacOS/WiiStorage'),
           KextInfo('./WiiGraphics/build_kext/WiiGraphics.kext/Contents/Info.plist', './WiiGraphics/build_kext/WiiGraphics.kext/Contents/MacOS/WiiGraphics'),
-          KextInfo('./WiiUSB/build_kext/WiiUSB.kext/Contents/Info.plist', './WiiUSB/build_kext/WiiUSB.kext/Contents/MacOS/WiiUSB')
+          KextInfo('./WiiUSB/build_kext/WiiUSB.kext/Contents/Info.plist', './WiiUSB/build_kext/WiiUSB.kext/Contents/MacOS/WiiUSB'),
+          KextInfo('./WiiEXI/build_kext/WiiEXI.kext/Contents/Info.plist', './WiiEXI/build_kext/WiiEXI.kext/Contents/MacOS/WiiEXI')
         ]
 
 #

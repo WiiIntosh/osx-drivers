@@ -59,6 +59,12 @@
 )
 
 //
+// Platform functions.
+//
+#define kWiiFuncPlatformIsCafe    "PlatformIsCafe"
+#define kWiiFuncIPCGetRTCBias     "IPCGetRTCBias"
+
+//
 // Major kernel version exported from XNU.
 //
 extern const int version_major;

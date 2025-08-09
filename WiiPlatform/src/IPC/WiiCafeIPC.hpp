@@ -36,6 +36,8 @@ public:
   //
   bool init(OSDictionary *dictionary = 0);
   bool start(IOService *provider);
+  IOReturn callPlatformFunction(const OSSymbol *functionName, bool waitForFunction,
+                                void *param1, void *param2, void *param3, void *param4);
 
   int doHaltRestart(unsigned int type);
 };

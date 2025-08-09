@@ -13,8 +13,9 @@ OSDefineMetaClassAndStructors(WiiCafeIPC, super);
 
 static WiiCafeIPC *gCafeIPC;
 
-#define CMD_POWEROFF 0xCAFE0001
-#define CMD_REBOOT   0xCAFE0002
+#define CMD_POWEROFF  0xCAFE0001
+#define CMD_REBOOT    0xCAFE0002
+#define CMD_RTC_BIAS  0xCAFE0003
 
 static int handleCafePEHaltRestart(unsigned int type) {
   return gCafeIPC->doHaltRestart(type);
@@ -60,7 +61,25 @@ bool WiiCafeIPC::start(IOService *provider) {
   //
   PE_halt_restart = handleCafePEHaltRestart;
 
+  registerService();
+
   return true;
+}
+
+//
+// Overrides IOService::callPlatformFunction().
+//
+IOReturn WiiCafeIPC::callPlatformFunction(const OSSymbol *functionName, bool waitForFunction,
+                                          void *param1, void *param2, void *param3, void *param4) {
+  if (functionName->isEqualTo(kWiiFuncIPCGetRTCBias)) {
+    writeReg32(kWiiLatteIPCPPCMSG, CMD_RTC_BIAS);
+    writeReg32(kWiiLatteIPCPPCCTRL, 0x1);
+    while (readReg32(kWiiLatteIPCPPCCTRL) & 0x1);
+    *((UInt32*) param1) = readReg32(kWiiLatteIPCARMMSG);
+    return kIOReturnSuccess;
+  }
+
+  return super::callPlatformFunction(functionName, waitForFunction, param1, param2, param3, param4);
 }
 
 //

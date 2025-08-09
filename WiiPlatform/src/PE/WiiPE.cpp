@@ -76,7 +76,7 @@ bool WiiPE::start(IOService *provider) {
   //
   // Create MEM2 allocator if on Wii.
   //
-  if (!isPlatformCafe()) {
+  if (!_isCafe) {
     mem2BufferStart = OSDynamicCast(OSData, provider->getProperty("wii-mem2-start"));
     mem2BufferSize  = OSDynamicCast(OSData, provider->getProperty("wii-mem2-size"));
 
@@ -99,9 +99,8 @@ bool WiiPE::start(IOService *provider) {
   }
 
   //
-  // TODO: Need to implement IORTC and IONVRAM resources, otherwise XNU waits for 30s each for these in IOKitResetTime().
+  // TODO: Need to implement IONVRAM resources, otherwise XNU waits for 30s for these in IOKitResetTime().
   //
-  publishResource("IORTC");
   publishResource("IONVRAM");
 
   //
@@ -111,6 +110,19 @@ bool WiiPE::start(IOService *provider) {
 
   WIIDBGLOG("Initialized Wii platform expert");
   return true;
+}
+
+//
+// Overrides IODTPlatformExpert::callPlatformFunction().
+//
+IOReturn WiiPE::callPlatformFunction(const OSSymbol *functionName, bool waitForFunction,
+                                void *param1, void *param2, void *param3, void *param4) {
+  if (functionName->isEqualTo(kWiiFuncPlatformIsCafe)) {
+    *((bool*) param1) = _isCafe;
+    return kIOReturnSuccess;
+  }
+
+  return super::callPlatformFunction(functionName, waitForFunction, param1, param2, param3, param4);
 }
 
 //
@@ -142,20 +154,23 @@ bool WiiPE::getMachineName(char *name, int maxLength) {
 // Overrides IODTPlatformExpert::getGMTTimeOfDay().
 //
 long WiiPE::getGMTTimeOfDay(void) {
-  // TODO
-  return 1743947017;
-}
+  mach_timespec_t t;
+  long            secs;
 
-//
-// Checks if the platform is Wii U (CAFE).
-//
-bool WiiPE::isPlatformCafe(void) {
-  return _isCafe;
-}
+  //
+  // Wait 30 seconds for RTC to appear.
+  // TODO: RTC stores time as local time, XNU expects GMT.
+  // Need to store/whatever TZ offset to emulated NVRAM when implemented.
+  //
+  t.tv_sec = 30;
+  t.tv_nsec = 0;
+  if (waitForService(resourceMatching("IORTC"), &t) != NULL) {
+    if (PE_read_write_time_of_day(kPEReadTOD, &secs) == 0) {
+      return secs;
+    }
+  } else {
+    WIISYSLOG("RTC did not show up");
+  }
 
-//
-// Gets the MEM2 range allocator.
-//
-IORangeAllocator *WiiPE::getMem2Allocator(void) {
-  return _mem2Allocator;
+  return 0;
 }
