@@ -6,6 +6,7 @@ all:
 	@$(MAKE) -C WiiStorage all
 	@$(MAKE) -C WiiUSB all
 	@$(MAKE) -C WiiEXI all
+	@$(MAKE) -C WiiAudio all
 
 clean:
 	@$(MAKE) -C WiiPlatform clean
@@ -13,3 +14,4 @@ clean:
 	@$(MAKE) -C WiiStorage clean
 	@$(MAKE) -C WiiUSB clean
 	@$(MAKE) -C WiiEXI clean
+	@$(MAKE) -C WiiAudio clean
