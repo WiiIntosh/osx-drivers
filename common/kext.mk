@@ -19,7 +19,7 @@ LD 			:= 	$(DARLING_CLT)/ld_classic
 #
 ASFLAGS	=
 CFLAGS  = 	-fno-builtin -fno-common -mlong-branch -finline -fno-keep-inline-functions
-CFLAGS	+=	-fmessage-length=0 -static -nostdinc -nostdlib -mkernel -r
+CFLAGS	+=	-fmessage-length=0  -force_cpusubtype_ALL -static -nostdinc -nostdlib -r
 CFLAGS	+=	-D__KERNEL__ -DKERNEL -DDEBUG -Wall -mmacosx-version-min=10.2 $(INCLUDE)
 CXXFLAGS	=	$(CFLAGS) -x c++ -fapple-kext -fno-rtti -fno-exceptions -fcheck-new
 

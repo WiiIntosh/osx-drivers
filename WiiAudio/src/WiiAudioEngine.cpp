@@ -57,13 +57,20 @@ bool WiiAudioEngine::initHardware(IOService *provider) {
     return false;
   }
 
+  //
+  // Add description for 10.2 and older only.
+  //
+  if (getKernelVersion() <= kKernelVersionJaguar) {
+    setDescription(_deviceDescription);
+  }
+
   sampleRate.whole    = 48000;
   sampleRate.fraction = 0;
 
-  setDescription(_deviceDescription);
   setSampleRate(&sampleRate);
-
-  setNumSampleFramesPerBuffer(_sampleBufferLength / kWiiAudioNumChannels / (kWiiAudioBitWidth / 8));
+  setNumSampleFramesPerBuffer(_sampleBufferLength / kWiiAudioBytesPerFrame);
+  setSampleLatency(32);
+  setSampleOffset(32);
 
   //
   // Create the output stream. Wii has no input hardware.
@@ -93,12 +100,16 @@ bool WiiAudioEngine::initHardware(IOService *provider) {
 //
 // Overrides IOAudioEngine::getCurrentSampleFrame().
 //
+// Gets the current frame being processed by the audio hardware.
+//
 UInt32 WiiAudioEngine::getCurrentSampleFrame() {
-  return ((_sampleBufferLength - _audioDriver->getAudioDspBytesLeft(this)) & ~(1024 - 1)) / kWiiAudioNumChannels / (kWiiAudioBitWidth / 8);
+  return (_sampleBufferLength - _audioDriver->getAudioDspBytesLeft(this)) / kWiiAudioBytesPerFrame;
 }
 
 //
 // Overrides IOAudioEngine::performAudioEngineStart().
+//
+// Starts the audio hardware.
 //
 IOReturn WiiAudioEngine::performAudioEngineStart() {
   takeTimeStamp(false);
@@ -107,6 +118,8 @@ IOReturn WiiAudioEngine::performAudioEngineStart() {
 
 //
 // Overrides IOAudioEngine::performAudioEngineStop().
+//
+// Stops the audio hardware.
 //
 IOReturn WiiAudioEngine::performAudioEngineStop() {
   return _audioDriver->stopAudioDsp(this);

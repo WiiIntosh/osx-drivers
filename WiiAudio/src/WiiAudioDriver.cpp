@@ -5,11 +5,17 @@
 //  Copyright © 2025 John Davis. All rights reserved.
 //
 
+#include <IOKit/audio/IOAudioDefines.h>
+
 #include "WiiAudioDriver.hpp"
 #include "WiiAudioEngine.hpp"
 #include "AudioRegs.hpp"
 
 OSDefineMetaClassAndStructors(WiiAudioDriver, super);
+
+#define kWiiAudioBufferSize     0x10000
+
+extern "C" vm_offset_t ml_io_map(vm_offset_t phys_addr, vm_size_t size);
 
 //
 // Overrides IOAudioDevice::init().
@@ -31,7 +37,6 @@ bool WiiAudioDriver::init(OSDictionary *dictionary) {
 // Overrides IOAudioDevice::initHardware().
 //
 bool WiiAudioDriver::initHardware(IOService *provider) {
-  IOPhysicalAddress   outputPhysAddr;
   IOByteCount         length;
   UInt16              dspControl;
   IOReturn            status;
@@ -52,9 +57,10 @@ bool WiiAudioDriver::initHardware(IOService *provider) {
     return false;
   }
 
+  setDeviceName ("Built-in Audio");
+  setDeviceShortName ("Built-in");
   setManufacturerName("Nintendo");
-  setDeviceName(_isCafe ? "Wii U Audio" : "Wii Audio");
-  setDeviceTransportType(kIOAudioDeviceTransportTypeBuiltIn);
+  setProperty(kIOAudioDeviceTransportTypeKey, kIOAudioDeviceTransportTypeBuiltIn, 32);
 
   //
   // Map audio interface memory.
@@ -90,23 +96,36 @@ bool WiiAudioDriver::initHardware(IOService *provider) {
   // Allocate output buffer.
   //
   if (_isCafe) {
-    _outputBuffer = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous, kWiiAudioBufferSize * 2, PAGE_SIZE);
+    _outputBufferDesc = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous, kWiiAudioBufferSize * 2, PAGE_SIZE);
   } else {
-    _outputBuffer = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous, kWiiAudioBufferSize, PAGE_SIZE);
+    _outputBufferDesc = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous, kWiiAudioBufferSize, PAGE_SIZE);
   }
-  if (_outputBuffer == NULL) {
+  if (_outputBufferDesc == NULL) {
     WIISYSLOG("Failed to allocate output buffer");
     return false;
   }
 
-  _outputBufferPtr = _outputBuffer->getBytesNoCopy();
+  _outputBufferPhysAddr = _outputBufferDesc->getPhysicalSegment(0, &length);
   if (_isCafe) {
-    _outputBufferLattePtr = ((UInt8*) _outputBufferPtr) + kWiiAudioBufferSize;
+    _outputBufferLattePhysAddr = _outputBufferDesc->getPhysicalSegment(kWiiAudioBufferSize, &length);
   }
-  status = IOSetProcessorCacheMode(kernel_task, (IOVirtualAddress) _outputBufferPtr, _outputBuffer->getLength(), kIOInhibitCache);
-  if (status != kIOReturnSuccess) {
-    WIISYSLOG("Failed to change mapping of output buffer");
-    return false;
+  
+  //
+  // Map as I/O. TODO: Is there a better way to do this? Attempting to use IOSetProcessorCache like others doesn't seem to work.
+  //
+  _outputBuffer = (void*)ml_io_map(_outputBufferPhysAddr, kWiiAudioBufferSize);
+  if (_isCafe) {
+    _outputBufferLatte = (void*)ml_io_map(_outputBufferLattePhysAddr, kWiiAudioBufferSize);
+  }
+
+  //
+  // Reset DSP and load buffers.
+  //
+  dspReset();
+  writeAudioReg32(kWiiAudioIntRegControl, readAudioReg32(kWiiAudioIntRegControl) & ~(kWiiAudioIntRegControlDspFreq32kHz));  
+  dspLoadSample(_outputBufferPhysAddr, kWiiAudioBufferSize, false);
+  if (_isCafe) {
+    dspLoadSample(_outputBufferLattePhysAddr, kWiiAudioBufferSize, true);
   }
 
   //
@@ -123,31 +142,32 @@ bool WiiAudioDriver::initHardware(IOService *provider) {
   workLoop->addEventSource(_interruptEventSource);
 
   //
-  // Reset DSP and load buffers.
-  //
-  dspReset();
-
-  outputPhysAddr = _outputBuffer->getPhysicalSegment(0, &length);
-  dspLoadSample(outputPhysAddr, kWiiAudioBufferSize, false);
-
-  if (_isCafe) {
-    outputPhysAddr = _outputBuffer->getPhysicalSegment(kWiiAudioBufferSize, &length);
-    dspLoadSample(outputPhysAddr, kWiiAudioBufferSize, true);
-  }
-
-  //
   // Create audio engines for outputs.
   //
-  _audioOutputEngine = createAudioEngine(_outputBufferPtr, kWiiAudioBufferSize, _isCafe ? "Wii U GamePad" : "Wii A/V");
+  _audioOutputEngine = createAudioEngine(_outputBuffer, kWiiAudioBufferSize, _isCafe ? "Wii U GamePad" : "Wii A/V",
+    OSMemberFunctionCast(IOAudioControl::IntValueChangeHandler, this, &WiiAudioDriver::handleControlChange));
   if (_audioOutputEngine == NULL) {
     WIISYSLOG("Failed to create audio engine");
     return false;
   }
+  status = createAudioPorts(_audioOutputEngine,
+    _isCafe ? kIOAudioOutputPortSubTypeInternalSpeaker : kIOAudioOutputPortSubTypeExternalSpeaker,
+    _isCafe ? "Wii U GamePad" : "Wii A/V");
+  if (status != kIOReturnSuccess) {
+    WIISYSLOG("Failed to create audio ports");
+    return false;
+  }
 
   if (_isCafe) {
-    _audioOutputLatteEngine = createAudioEngine(_outputBufferLattePtr, kWiiAudioBufferSize, "Wii U A/V");
+    _audioOutputLatteEngine = createAudioEngine(_outputBufferLatte, kWiiAudioBufferSize, "Wii U A/V",
+      OSMemberFunctionCast(IOAudioControl::IntValueChangeHandler, this, &WiiAudioDriver::handleLatteControlChange));
     if (_audioOutputLatteEngine == NULL) {
       WIISYSLOG("Failed to create Latte audio engine");
+      return false;
+    }
+    status = createAudioPorts(_audioOutputLatteEngine, kIOAudioOutputPortSubTypeExternalSpeaker, "Wii U A/V");
+    if (status != kIOReturnSuccess) {
+      WIISYSLOG("Failed to create Latte audio ports");
       return false;
     }
   }

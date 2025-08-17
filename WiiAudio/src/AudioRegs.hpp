@@ -12,10 +12,12 @@
 
 #define kWiiAudioNumChannels        2
 #define kWiiAudioBitWidth           16
+#define kWiiAudioBytesPerFrame      (kWiiAudioNumChannels * (kWiiAudioBitWidth / 8))
 
 //
 // Audio interface registers.
 //
+// Audio interface control.
 #define kWiiAudioIntRegControl                0x00
 #define kWiiAudioIntRegControlPlayStatus      BIT0
 #define kWiiAudioIntRegControlAuxFreq32KHz    BIT1
@@ -24,13 +26,14 @@
 #define kWiiAudioIntRegControlIntValid        BIT4
 #define kWiiAudioIntRegControlResetSampleCnt  BIT5
 #define kWiiAudioIntRegControlDspFreq32kHz    BIT6
-
+// Audio interface volume (left + right).
 #define kWiiAudioIntRegVolume                 0x04
 #define kWiiAudioIntRegVolumeLeftMask         BITRange(0, 7)
 #define kWiiAudioIntRegVolumeRightShift       8
 #define kWiiAudioIntRegVolumeRightMask        BITRange(8, 15)
-
+// Audio interface sample counter.
 #define kWiiAudioIntRegSampleCounter          0x08
+// Audio interface interrupt timing.
 #define kWiiAudioIntRegInterruptTiming        0x0C
 
 //
@@ -45,7 +48,7 @@
 #define kWiiAudioDspRegControlStatus                      0x0A
 // Reset DSP.
 #define kWiiAudioDspRegControlStatusReset                 BIT0
-//
+// DSP interrupt enabled.
 #define kWiiAudioDspRegControlStatusDspIntEnable          BIT1
 // Halt DSP.
 #define kWiiAudioDspRegControlStatusHalt                  BIT2
@@ -72,16 +75,36 @@
 // Audio interface (TV) interrupt enabled.
 #define kWiiAudioDspRegControlStatusLatteAudioIntEnable   BIT13
 
+//
+// Wii TV and Wii U GamePad DMA registers.
+//
+// High 16 bits of DMA physical address.
 #define kWiiAudioDspRegDmaStartHigh           0x30
+// Low 16 bits of DMA physical address.
 #define kWiiAudioDspRegDmaStartLow            0x32
+// Length of DMA buffer (>> 5).
 #define kWiiAudioDspRegDmaLength              0x36
+#define kWiiAudioDspRegDmaLengthShift         5
+// Set to play DMA buffer.
 #define kWiiAudioDspRegDmaLengthPlay          BIT15
+// Remaining bytes in DMA buffer (>> 5).
 #define kWiiAudioDspRegDmaBytesLeft           0x3A
+#define kWiiAudioDspRegDmaBytesLeftShift      5
 
+//
+// Wii U TV DMA registers.
+//
+// High 16 bits of DMA physical address.
 #define kWiiAudioDspRegLatteDmaStartHigh      0x40
+// Low 16 bits of DMA physical address.
 #define kWiiAudioDspRegLatteDmaStartLow       0x42
+// Length of DMA buffer (>> 5).
 #define kWiiAudioDspRegLatteDmaLength         0x46
+#define kWiiAudioDspRegLatteDmaLengthShift    5
+// Set to play DMA buffer.
 #define kWiiAudioDspRegLatteDmaLengthPlay     BIT15
+// Remaining bytes in DMA buffer (>> 5).
 #define kWiiAudioDspRegLatteDmaBytesLeft      0x4A
+#define kWiiAudioDspRegLatteDmaBytesLeftShift 5
 
 #endif

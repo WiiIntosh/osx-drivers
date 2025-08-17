@@ -8,9 +8,7 @@
 #ifndef WiiAudioEngine_hpp
 #define WiiAudioEngine_hpp
 
-#include <IOKit/IOBufferMemoryDescriptor.h>
 #include <IOKit/audio/IOAudioEngine.h>
-
 #include "WiiCommon.hpp"
 
 class WiiAudioDriver;
@@ -38,13 +36,8 @@ public:
   IOReturn performAudioEngineStart();
   IOReturn performAudioEngineStop();
   IOReturn performFormatChange(IOAudioStream *audioStream, const IOAudioStreamFormat *newFormat, const IOAudioSampleRate *newSampleRate);
-  IOReturn clipOutputSamples(
-                           const void *                mixBuf,
-                           void *                      sampleBuf,
-                           UInt32                      firstSampleFrame,
-                           UInt32                      numSampleFrames,
-                           const IOAudioStreamFormat * streamFormat,
-                           IOAudioStream *             audioStream );
+  IOReturn clipOutputSamples(const void *mixBuf, void *sampleBuf, UInt32 firstSampleFrame, UInt32 numSampleFrames,
+                             const IOAudioStreamFormat *streamFormat, IOAudioStream *audioStream);
 
   bool init(WiiAudioDriver *driver, void *buffer, IOByteCount bufferLength, const char *description);
 };
