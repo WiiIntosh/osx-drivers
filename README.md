@@ -11,21 +11,24 @@ Currently tested/built for 10.2-10.4, but will eventually support all versions c
   - No hotplug
   - Only supports SDHC cards
 - OHCI USB 1.1 host controller
-  - Unstable
   - Only rear ports are currently supported
-  - Bulk/isochronous endpoints unsupported (mass storage and audio/streaming devices)
+  - Isochronous endpoints unsupported (audio/streaming devices)
 
 ### Supported Wii U hardware
 - Primary interrupt controller
 - Latte interrupt controller
-- 32-bit framebuffer on TV
+- TV framebuffer (1280x720 at 32bpp, 16bpp, or 8bpp)
+- EXI bus
+  - Real time clock
+- Audio
+  - Gamepad and TV
+  - Some playback may not function
 - SD host controller (front SD card slot)\
   - No hotplug
   - Only supports SDHC cards
 - OHCI USB 1.1 host controller
-  - Unstable
   - Only rear ports are currently supported
-  - Bulk/isochronous endpoints unsupported (mass storage and audio/streaming devices)
+  - Isochronous endpoints unsupported (audio/streaming devices)
 
 ### Unsupported Wii hardware
 - EHCI USB 2.0 controller (rear ports)
@@ -44,12 +47,8 @@ Currently tested/built for 10.2-10.4, but will eventually support all versions c
 ### Unsupported Wii U hardware
 - EHCI USB 2.0 controller (external ports)
 - DVD drive
-- Audio
 - Power switch
-- Console reboot/shutdown
 - Bluetooth (should be possible with full OHCI on versions that have a Bluetooth stack)
-- EXI bus
-  - Real time clock
 - WiFi via SDIO controller
 
 ### Boot arguments
