@@ -35,8 +35,6 @@ static int Wii_PE_read_write_time_of_day(unsigned int options, long *secs) {
 bool WiiEXI::init(OSDictionary *dictionary) {
   WiiCheckDebugArgs();
 
-  _debugEnabled = true;
-
   _memoryMap              = NULL;
   _baseAddr               = NULL;
 
@@ -58,9 +56,6 @@ bool WiiEXI::start(IOService *provider) {
     return false;
   }
 
-  WIIDBGLOG("Got here");
-  IOSleep(500);
-
   //
   // Get platform type.
   //
@@ -69,9 +64,6 @@ bool WiiEXI::start(IOService *provider) {
     WIISYSLOG("Failed to get platform type");
     return false;
   }
-
-  WIIDBGLOG("and here");
-  IOSleep(500);
 
   //
   // Map controller memory.
@@ -133,9 +125,6 @@ bool WiiEXI::start(IOService *provider) {
       return false;
     }
   }
-
-  WIIDBGLOG("then here");
-  IOSleep(500);
   
   registerService();
 
