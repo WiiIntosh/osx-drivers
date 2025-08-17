@@ -12,6 +12,13 @@ OSDefineMetaClassAndStructors(WiiCafeFB, super);
 
 #define kCursorPosOffset   4
 
+enum {
+  kWiiCafeFBDepth32bpp = 0,
+  kWiiCafeFBDepth16bpp,
+  kWiiCafeFBDepth8bpp,
+  kWiiCafeFBDepthMax
+};
+
 //
 // Overrides IOFramebuffer::init().
 //
@@ -22,6 +29,12 @@ bool WiiCafeFB::init(OSDictionary *dictionary) {
 
   _memoryMap    = NULL;
   _baseAddr     = NULL;
+
+  _currentDisplayModeId = 1;
+  _currentDepth         = kWiiCafeFBDepth32bpp;
+  _gammaValid           = false;
+  _clutValid            = false;
+
   _cursorBuffer = NULL;
   _cursorHwDesc = NULL;
 
@@ -91,8 +104,12 @@ IODeviceMemory *WiiCafeFB::getApertureRange(IOPixelAperture aperture) {
 // Gets the supported pixel formats.
 //
 const char *WiiCafeFB::getPixelFormats(void) {
-  WIIDBGLOG("getPixelFormats\n");
-  return IO32BitDirectPixels;
+  static const char *pixelFormats =
+    IO32BitDirectPixels "\0"
+    IO16BitDirectPixels "\0"
+    IO8BitIndexedPixels "\0"
+    "\0";
+  return pixelFormats;
 }
 
 //
@@ -101,7 +118,7 @@ const char *WiiCafeFB::getPixelFormats(void) {
 // Gets the number of supported display modes.
 //
 IOItemCount WiiCafeFB::getDisplayModeCount(void) {
-  WIIDBGLOG("getDisplayModeCount\n");
+  WIIDBGLOG("getDisplayModeCount");
   return 1;
 }
 
@@ -111,7 +128,7 @@ IOItemCount WiiCafeFB::getDisplayModeCount(void) {
 // Gets the supported display modes.
 //
 IOReturn WiiCafeFB::getDisplayModes(IODisplayModeID *allDisplayModes) {
-  WIIDBGLOG("getDisplayModes\n");
+  WIIDBGLOG("getDisplayModes");
   *allDisplayModes = 1;
   return kIOReturnSuccess;
 }
@@ -122,17 +139,15 @@ IOReturn WiiCafeFB::getDisplayModes(IODisplayModeID *allDisplayModes) {
 // Gets detailed information for the specified display mode.
 //
 IOReturn WiiCafeFB::getInformationForDisplayMode(IODisplayModeID displayMode, IODisplayModeInformation *info) {
-  WIIDBGLOG("getInformationForDisplayMode\n");
-
   if ((displayMode == 0) || (displayMode > 1)) {
     return kIOReturnBadArgument;
   }
 
   bzero(info, sizeof (*info));
-  info->nominalWidth  = 1280; //896;
-  info->nominalHeight = 720;//504;
+  info->nominalWidth  = 1280;
+  info->nominalHeight = 720;
   info->refreshRate   = 60 << 16;
-  info->maxDepthIndex = 0;
+  info->maxDepthIndex = kWiiCafeFBDepthMax - 1;
 
   return kIOReturnSuccess;
 }
@@ -152,39 +167,51 @@ UInt64 WiiCafeFB::getPixelFormatsForDisplayMode(IODisplayModeID displayMode, IOI
 // Gets pixel information for the specified display mode.
 //
 IOReturn WiiCafeFB::getPixelInformation(IODisplayModeID displayMode, IOIndex depth, IOPixelAperture aperture, IOPixelInformation *pixelInfo) {
-  WIIDBGLOG("getPixelInformation\n");
   if (aperture != kIOFBSystemAperture) {
     return kIOReturnUnsupportedMode;
   }
 
-  if ((displayMode == 0) || (displayMode > 1)) {
+  if ((displayMode == 0) || (displayMode > 1) || (depth >= kWiiCafeFBDepthMax)) {
     return kIOReturnBadArgument;
   }
 
-  //
-  // Pull video parameters from kernel.
-  //
-  //UInt32 videoBaseAddress  = (UInt32) PE_state.video.v_baseAddr;
- // UInt32 videoWidth        = (UInt32) PE_state.video.v_width;
- // UInt32 videoHeight       = (UInt32) PE_state.video.v_height;
- // UInt32 videoDepth        = (UInt32) PE_state.video.v_depth;
-  //UInt32 videoBytesPerRow  = (UInt32) PE_state.video.v_rowBytes;
-
   bzero(pixelInfo, sizeof (*pixelInfo));
+  pixelInfo->activeWidth  = 1280;
+  pixelInfo->activeHeight = 720;
 
-  pixelInfo->bytesPerRow          = 1280 * 4;//896 * 4;
-  pixelInfo->bitsPerPixel         = 32;
-  pixelInfo->pixelType            = kIORGBDirectPixels;
-  pixelInfo->bitsPerComponent     = 8;
-  pixelInfo->componentCount       = 3;
-  pixelInfo->componentMasks[0]    = 0xFF0000;
-  pixelInfo->componentMasks[1]    = 0x00FF00;
-  pixelInfo->componentMasks[2]    = 0x0000FF;
-  pixelInfo->activeWidth          = 1280;//896;
-  pixelInfo->activeHeight         = 720;//504;
+  if (depth == kWiiCafeFBDepth32bpp) {
+    pixelInfo->pixelType         = kIORGBDirectPixels;
+    pixelInfo->bytesPerRow       = pixelInfo->activeWidth * 4;
+    pixelInfo->bitsPerPixel      = 32;
+    pixelInfo->bitsPerComponent  = 8;
+    pixelInfo->componentCount    = 3;
+    pixelInfo->componentMasks[0] = 0xFF0000;
+    pixelInfo->componentMasks[1] = 0x00FF00;
+    pixelInfo->componentMasks[2] = 0x0000FF;
 
-  //strncpy(pixelInfo->pixelFormat, IO16BitDirectPixels, sizeof (pixelInfo->pixelFormat));
-  strncpy(pixelInfo->pixelFormat, IO32BitDirectPixels, sizeof (pixelInfo->pixelFormat));
+    strncpy(pixelInfo->pixelFormat, IO32BitDirectPixels, sizeof (pixelInfo->pixelFormat));
+  } else if (depth == kWiiCafeFBDepth16bpp) {
+    pixelInfo->pixelType         = kIORGBDirectPixels;
+    pixelInfo->bytesPerRow       = pixelInfo->activeWidth * 2;
+    pixelInfo->bitsPerPixel      = 16;
+    pixelInfo->bitsPerComponent  = 5;
+    pixelInfo->componentCount    = 3;
+    pixelInfo->componentMasks[0] = 0x7C00;
+    pixelInfo->componentMasks[1] = 0x03E0;
+    pixelInfo->componentMasks[2] = 0x001F;
+
+    strncpy(pixelInfo->pixelFormat, IO16BitDirectPixels, sizeof (pixelInfo->pixelFormat));
+  } else if (depth == kWiiCafeFBDepth8bpp) {
+    pixelInfo->pixelType         = kIOCLUTPixels;
+    pixelInfo->bytesPerRow       = pixelInfo->activeWidth;
+    pixelInfo->bitsPerPixel      = 8;
+    pixelInfo->bitsPerComponent  = 8;
+    pixelInfo->componentCount    = 1;
+    pixelInfo->componentMasks[0] = 0xFF;
+
+    strncpy(pixelInfo->pixelFormat, IO8BitIndexedPixels, sizeof (pixelInfo->pixelFormat));
+  }
+
   return kIOReturnSuccess;
 }
 
@@ -194,9 +221,151 @@ IOReturn WiiCafeFB::getPixelInformation(IODisplayModeID displayMode, IOIndex dep
 // Gets the current display mode.
 //
 IOReturn WiiCafeFB::getCurrentDisplayMode(IODisplayModeID *displayMode, IOIndex *depth) {
-  WIIDBGLOG("getCurrentDisplayMode\n");
+  *displayMode = _currentDisplayModeId;
+  *depth       = _currentDepth;
+
+  WIIDBGLOG("Current mode: %d, depth: %d", _currentDisplayModeId, _currentDepth);
+  return kIOReturnSuccess;
+}
+
+//
+// Overrides IOFramebuffer::setDisplayMode().
+//
+// Sets the current display mode.
+//
+IOReturn WiiCafeFB::setDisplayMode(IODisplayModeID displayMode, IOIndex depth) {
+  UInt32 control;
+  UInt32 swap;
+
+  if ((displayMode == 0) || (displayMode > 1) || (depth >= kWiiCafeFBDepthMax)) {
+    return kIOReturnBadArgument;
+  }
+
+  //
+  // Disable display.
+  //
+  writeReg32(kWiiGX2RegD1GrphEnable, 0);
+
+  //
+  // Adjust depth and endianness swapping.
+  //
+  control = readReg32(kWiiGX2RegD1GrphControl);
+  control &= ~(kWiiGX2RegD1GrphControlDepthMask | kWiiGX2RegD1GrphControlFormatMask);
+
+  if (depth == kWiiCafeFBDepth32bpp) {
+    control |= kWiiGX2RegD1GrphControlDepth32bpp | kWiiGX2RegD1GrphControlFormat32bppARGB8888;
+    swap     = kWiiGX2RegD1GrphSwapControlEndianSwap32Bit;
+  } else if (depth == kWiiCafeFBDepth16bpp) {
+    control |= kWiiGX2RegD1GrphControlDepth16bpp | kWiiGX2RegD1GrphControlFormat16bppARGB555;
+    swap     = kWiiGX2RegD1GrphSwapControlEndianSwap16Bit;
+  } else if (depth == kWiiCafeFBDepth8bpp) {
+    control |= kWiiGX2RegD1GrphControlDepth8bpp | kWiiGX2RegD1GrphControlFormat8bppIndexed;
+    swap     = kWiiGX2RegD1GrphSwapControlEndianSwapNone;
+  }
+
+  writeReg32(kWiiGX2RegD1GrphControl, control);
+  writeReg32(kWiiGX2RegD1GrphSwapControl, swap);
+
+  //
+  // Re-enable display.
+  //
+  writeReg32(kWiiGX2RegD1GrphEnable, kWiiGX2RegD1GrphEnableBit);
+
+  _currentDisplayModeId = displayMode;
+  _currentDepth         = depth;
+
+  return kIOReturnSuccess;
+}
+
+//
+// Overrides IOFramebuffer::getStartupDisplayMode().
+//
+// Gets the startup display mode.
+//
+IOReturn WiiCafeFB::getStartupDisplayMode(IODisplayModeID *displayMode, IOIndex *depth) {
   *displayMode = 1;
-  *depth = 0;
+  *depth       = kWiiCafeFBDepth32bpp;
+  return kIOReturnSuccess;
+}
+
+//
+// Overrides IOFramebuffer::setCLUTWithEntries().
+//
+// Sets the color lookup table.
+//
+IOReturn WiiCafeFB::setCLUTWithEntries(IOColorEntry *colors, UInt32 index, UInt32 numEntries, IOOptionBits options) {
+  bool byValue = options & kSetCLUTByValue;
+
+  //
+  // Build internal color table.
+  //
+  for (UInt32 i = 0; i < numEntries; i++) {
+    UInt32 offset = byValue ? colors[i].index : index + i;
+		if (offset > 255){
+      continue;
+    }
+
+    _clutEntries[offset].red = colors[i].red >> 8;
+    _clutEntries[offset].green = colors[i].green >> 8;
+    _clutEntries[offset].blue = colors[i].blue >> 8;
+  }
+
+  _clutValid = true;
+  loadHardwareLUT();
+
+  return kIOReturnSuccess;
+}
+
+//
+// Overrides IOFramebuffer::setGammaTable().
+//
+// Sets the gamma table.
+//
+IOReturn WiiCafeFB::setGammaTable(UInt32 channelCount, UInt32 dataCount, UInt32 dataWidth, void *data) {
+  UInt8   *gammaData8;
+  UInt16  *gammaData16;
+
+  //
+  // Build internal gamma table.
+  // OS X 10.1 uses 8-bit data, 10.2 and newer use 16-bit.
+  //
+  if (dataWidth == 8) {
+    gammaData8 = (UInt8 *)data;
+    if (channelCount == 3) {
+      bcopy(gammaData8, &_gammaTable, 256 * 3);
+    } else if (channelCount == 1) {
+      for (UInt32 i = 0; i < 256; i++) {
+        _gammaTable.red[i]   = gammaData8[i];
+        _gammaTable.green[i] = gammaData8[i];
+        _gammaTable.blue[i]  = gammaData8[i];
+      }
+    } else {
+      return kIOReturnUnsupported;
+    }
+  } else if (dataWidth == 16) {
+    gammaData16 = (UInt16 *)data;
+    if (channelCount == 3) {
+      for (UInt32 i = 0; i < 256; i++) {
+        _gammaTable.red[i]   = gammaData16[i] >> 8;
+        _gammaTable.green[i] = gammaData16[i + 256] >> 8;
+        _gammaTable.blue[i]  = gammaData16[i + 512] >> 8;
+      }
+    } else if (channelCount == 1) {
+      for (UInt32 i = 0; i < 256; i++) {
+        _gammaTable.red[i]   = gammaData16[i] >> 8;
+        _gammaTable.green[i] = gammaData16[i] >> 8;
+        _gammaTable.blue[i]  = gammaData16[i] >> 8;
+      }
+    } else {
+      return kIOReturnUnsupported;
+    }
+  } else {
+    return kIOReturnUnsupported;
+  }
+
+  _gammaValid = true;
+  loadHardwareLUT();
+
   return kIOReturnSuccess;
 }
 
@@ -323,4 +492,62 @@ IOReturn WiiCafeFB::setCursorState(SInt32 x, SInt32 y, bool visible) {
   }
   writeReg32(kWiiGX2RegD1CursorControl, cursorControl);
   return kIOReturnSuccess;
+}
+
+//
+// Load color/gamma tables into the hardware.
+//
+void WiiCafeFB::loadHardwareLUT(void) {
+  UInt32 colorValue;
+
+  if (!_clutValid || !_gammaValid) {
+    return;
+  }
+
+  //
+  // Reset LUT A.
+  //
+  writeReg32(kWiiGX2RegDcLutAControl, 0);
+  writeReg32(kWiiGX2RegDcLutABlackOffsetBlue, 0);
+  writeReg32(kWiiGX2RegDcLutABlackOffsetGreen, 0);
+  writeReg32(kWiiGX2RegDcLutABlackOffsetRed, 0);
+  writeReg32(kWiiGX2RegDcLutAWhiteOffsetBlue, 0xFFFF);
+  writeReg32(kWiiGX2RegDcLutAWhiteOffsetGreen, 0xFFFF);
+  writeReg32(kWiiGX2RegDcLutAWhiteOffsetRed, 0xFFFF);
+
+  //
+  // Select LUT A for writing color info.
+  //
+  writeReg32(kWiiGX2RegDcLutRwSelect, 0);
+  writeReg32(kWiiGX2RegDcLutRwMode, 0);
+  writeReg32(kWiiGX2RegDcLutWriteEnMask, kWiiGX2RegDcLutWriteEnMaskAll);
+
+  //
+  // Only load indexed colors in 8-bit mode.
+  // Other modes use generated LUT.
+  //
+  if (_currentDepth == kWiiCafeFBDepth8bpp) {
+    writeReg32(kWiiGX2RegDcLutRwIndex, 0);
+    for (UInt32 i = 0; i < 256; i++) {
+      //
+      // Write each color to the LUT.
+      // Gamma/color combo is 8-bit, need to shift over to 10-bit.
+      //
+      colorValue  = (_gammaTable.blue[_clutEntries[i].blue]    << 2) & kWiiGX2RegDcLutColorBlueMask;
+      colorValue |= ((_gammaTable.green[_clutEntries[i].green] << 2) << kWiiGX2RegDcLutColorGreenShift) & kWiiGX2RegDcLutColorGreenMask;
+      colorValue |= ((_gammaTable.red[_clutEntries[i].red]     << 2) << kWiiGX2RegDcLutColorRedShift) & kWiiGX2RegDcLutColorRedMask;
+      writeReg32(kWiiGX2RegDcLutColor, colorValue);
+    }
+  } else {
+    //
+    // Start autofill of LUT and wait for completion.
+    //
+    writeReg32(kWiiGX2RegDcLutAutofill, kWiiGX2RegDcLutAutofillStart);
+    while ((readReg32(kWiiGX2RegDcLutAutofill) & kWiiGX2RegDcLutAutofillDone) == 0);
+  }
+
+  //
+  // Use LUT A for the primary graphics.
+  //
+  writeReg32(kWiiGX2RegD1GrphLutSelect, 0);
 }
