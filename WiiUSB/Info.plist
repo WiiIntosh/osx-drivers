@@ -32,8 +32,6 @@
 	</dict>
 	<key>OSBundleLibraries</key>
 	<dict>
-		<key>__BUNDLE__.WiiPlatform</key>
-		<string>__VERSION__</string>
 		<key>com.apple.iokit.IOUSBFamily</key>
 		<string>1.8</string>
 		<key>com.apple.kernel.iokit</key>

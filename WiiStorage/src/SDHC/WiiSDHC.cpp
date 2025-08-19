@@ -5,10 +5,11 @@
 //  Copyright © 2025 John Davis. All rights reserved.
 //
 
-#include "WiiSDHC.hpp"
-
 #include <IOKit/IODeviceTreeSupport.h>
 #include <IOKit/IOKitKeys.h>
+#include <IOKit/IOPlatformExpert.h>
+
+#include "WiiSDHC.hpp"
 
 OSDefineMetaClassAndStructors(WiiSDHC, super);
 
@@ -22,10 +23,10 @@ bool WiiSDHC::init(OSDictionary *dictionary) {
   _baseAddr               = NULL;
 
   _workLoop               = NULL;
-  //_commandPool            = NULL;
   _commandGate            = NULL;
   _currentCommand         = NULL;
   _sdhcState              = kSDHCStateFree;
+  _invalidateCacheFunc    = NULL;
 
   queue_init(&_commandQueue);
 
@@ -36,8 +37,9 @@ bool WiiSDHC::init(OSDictionary *dictionary) {
 // Overrides IOService::start()
 //
 bool WiiSDHC::start(IOService *provider) {
-  WiiSDCommand  *sdCommand;
-  IOReturn      status;
+  const OSSymbol  *functionSymbol;
+  WiiSDCommand    *sdCommand;
+  IOReturn        status;
 
   if (!super::start(provider)) {
     WIISYSLOG("super::start() returned false");
@@ -55,6 +57,24 @@ bool WiiSDHC::start(IOService *provider) {
   _baseAddr = (volatile void *)_memoryMap->getVirtualAddress();
   WIIDBGLOG("Mapped registers to %p (physical 0x%X), length: 0x%X", _baseAddr,
     _memoryMap->getPhysicalAddress(), _memoryMap->getLength());
+
+  //
+  // Get cache invalidation function.
+  //
+  functionSymbol = OSSymbol::withCString(kWiiFuncPlatformGetInvalidateCache);
+  if (functionSymbol == NULL) {
+    return false;
+  }
+  status = getPlatform()->callPlatformFunction(functionSymbol, false, &_invalidateCacheFunc, 0, 0, 0);
+  functionSymbol->release();
+  if (status != kIOReturnSuccess) {
+    return false;
+  }
+
+  if (_invalidateCacheFunc == NULL) {
+    WIISYSLOG("Failed to get cache invalidation function");
+    return false;
+  }
 
   //
   // Initialize work loop and command pool.

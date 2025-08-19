@@ -15,19 +15,13 @@
 OSDefineMetaClassAndStructors(WiiPE, super);
 
 //
-// Address of _invalidate_dcache. This function is not exported on 10.4
-//
-void (*WiiInvalidateDataCacheFunc)(vm_offset_t, unsigned, int) = 0;
-
-#define ESPRESSO_PVR_HIGH       0x70010000
-
-//
 // Overrides IODTPlatformExpert::init().
 //
 bool WiiPE::init(OSDictionary *dictionary) {
   WiiCheckDebugArgs();
 
-  _mem2Allocator  = NULL;
+  _invalidateCacheFunc = NULL;
+  _mem2Allocator       = NULL;
 
   return super::init(dictionary);
 }
@@ -62,8 +56,8 @@ bool WiiPE::start(IOService *provider) {
     return false;
   }
 
-  WiiInvalidateDataCacheFunc = (void (*)(vm_offset_t, unsigned, int)) resolveKernelSymbol("_invalidate_dcache");
-  if (WiiInvalidateDataCacheFunc == 0) {
+  _invalidateCacheFunc = (void (*)(vm_offset_t, unsigned, int)) resolveKernelSymbol("_invalidate_dcache");
+  if (_invalidateCacheFunc == NULL) {
     return false;
   }
 
@@ -112,6 +106,14 @@ bool WiiPE::start(IOService *provider) {
 //
 IOReturn WiiPE::callPlatformFunction(const OSSymbol *functionName, bool waitForFunction,
                                 void *param1, void *param2, void *param3, void *param4) {
+  //
+  // Get cache invalidation function.
+  //
+  if (functionName->isEqualTo(kWiiFuncPlatformGetInvalidateCache)) {
+    *((WiiInvalidateDataCacheFunc*) param1) = _invalidateCacheFunc;
+    return kIOReturnSuccess;
+  }
+
   //
   // Get MEM2 allocator.
   //

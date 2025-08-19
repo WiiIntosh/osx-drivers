@@ -57,8 +57,6 @@
 	</dict>
 	<key>OSBundleLibraries</key>
 	<dict>
-		<key>__BUNDLE__.WiiPlatform</key>
-		<string>__VERSION__</string>
 		<key>com.apple.iokit.IOStorageFamily</key>
 		<string>1.0</string>
 		<key>com.apple.kernel.iokit</key>

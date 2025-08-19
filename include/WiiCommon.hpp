@@ -61,8 +61,9 @@
 //
 // Platform functions.
 //
-#define kWiiFuncPlatformGetMem2Allocator  "PlatformGetMem2Allocator"
-#define kWiiFuncIPCGetRTCBias             "IPCGetRTCBias"
+#define kWiiFuncPlatformGetInvalidateCache  "PlatformGetInvalidateCache"
+#define kWiiFuncPlatformGetMem2Allocator    "PlatformGetMem2Allocator"
+#define kWiiFuncIPCGetRTCBias               "IPCGetRTCBias"
 
 //
 // Major kernel version exported from XNU.
@@ -127,23 +128,7 @@ inline void flushDataCachePhys(UInt32 physAddr, UInt32 size) {
   flush_dcache(physAddr, size, true);
 }
 
-extern void (*WiiInvalidateDataCacheFunc)(vm_offset_t, unsigned, int);
-
-//
-// Invalidates cache for virtual buffer.
-//
-inline void invalidateDataCache(volatile void *buffer, UInt32 size) {
-  // Invokes invalidate_dcache. This is not exported in 10.4 so needed to resolve it earlier ourselves.
-  (*WiiInvalidateDataCacheFunc)((vm_offset_t) buffer, size, false);
-}
-
-//
-// Invalidates cache for physical buffer.
-//
-inline void invalidateDataCachePhys(UInt32 physAddr, UInt32 size) {
-  // Invokes invalidate_dcache. This is not exported in 10.4 so needed to resolve it earlier ourselves.
-  (*WiiInvalidateDataCacheFunc)(physAddr, size, true);
-}
+typedef void (*WiiInvalidateDataCacheFunc)(vm_offset_t va, unsigned length, boolean_t phys);
 
 #if DEBUG
 //

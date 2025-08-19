@@ -166,7 +166,7 @@ void WiiOHCI::completeTransferQueue(UInt32 headPhysAddr) {
     //
     if (genTransferCurr->srcBuffer != NULL) {
       if (genTransferCurr->srcBuffer->getDirection() & kIODirectionIn) {
-        invalidateDataCache(genTransferCurr->tmpBufferPtr, genTransferCurr->actualBufferSize);
+        _invalidateCacheFunc((vm_offset_t) genTransferCurr->tmpBufferPtr, genTransferCurr->actualBufferSize, false);
         if ((genTransferCurr->actualBufferSize - bufferSizeRemaining) > 0) {
           genTransferCurr->srcBuffer->writeBytes(0, genTransferCurr->tmpBufferPtr, genTransferCurr->actualBufferSize - bufferSizeRemaining);
         }

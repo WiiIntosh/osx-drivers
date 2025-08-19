@@ -356,7 +356,7 @@ void WiiSDHC::doAsyncIO(UInt32 intStatus) {
       if (_currentCommand->getBlockCount() != 0) {
         if (memoryDescriptor->getDirection() == kIODirectionIn) {
           memoryDescriptor->prepare();
-          invalidateDataCache(_doubleBufferPtr, seg->length);
+          _invalidateCacheFunc((vm_offset_t) _doubleBufferPtr, seg->length, false);
           if (_currentCommand->getArgument() == 0) { // TODO: 10.3 does not like MBR disks
             WIISYSLOG("Got block 0, MBR HACK: 0x%X", *((UInt16*) &_doubleBufferPtr[0x1FE]));
             _doubleBufferPtr[0x1FE] = 0x00;

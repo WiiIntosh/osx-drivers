@@ -5,6 +5,7 @@
 //  Copyright © 2025 John Davis. All rights reserved.
 //
 
+#include <IOKit/IOPlatformExpert.h>
 #include "WiiOHCI.hpp"
 
 OSDefineMetaClassAndStructors(WiiOHCI, super);
@@ -19,6 +20,7 @@ bool WiiOHCI::init(OSDictionary *dictionary) {
   _mem2Allocator          = NULL;
   _baseAddr               = NULL;
   _interruptEventSource   = NULL;
+  _invalidateCacheFunc    = NULL;
 
   _endpointBufferHeadPtr  = NULL;
   _freeEndpointHeadPtr    = NULL;
@@ -43,18 +45,14 @@ bool WiiOHCI::init(OSDictionary *dictionary) {
 // Called from IOUSBController::start().
 //
 IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
-  UInt8     ohciRevision;
-  UInt32    ohciControl;
-  UInt32    ohciFrameInterval;
-  UInt32    ohciFrameLargestPacket;
-  UInt32    ohciRemoteWakeup;
- // WiiPE     *wiiPE;
-  IOReturn  status;
-
-  //wiiPE = OSDynamicCast(WiiPE, getPlatform());
- // if (wiiPE == NULL) {
- //   return kIOReturnUnsupported;
- // }
+  const OSSymbol  *functionSymbol;
+  IOByteCount     length;
+  UInt8           ohciRevision;
+  UInt32          ohciControl;
+  UInt32          ohciFrameInterval;
+  UInt32          ohciFrameLargestPacket;
+  UInt32          ohciRemoteWakeup;
+  IOReturn        status;
 
   //
   // Map controller memory.
@@ -69,17 +67,43 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
     _memoryMap->getPhysicalAddress(), _memoryMap->getLength());
 
   //
-  // Create MEM2 allocator if on Wii.
-  // Transfer descriptor buffers must be in MEM2, others are optional but we'll put everything there to take advantage of the space.
+  // Get cache invalidation function.
   //
-  /*if (!wiiPE->isPlatformCafe()) {
-    _mem2Allocator = wiiPE->getMem2Allocator();
-    if (_mem2Allocator == NULL) {
-      WIISYSLOG("Failed to get MEM2 buffer memory");
+  functionSymbol = OSSymbol::withCString(kWiiFuncPlatformGetInvalidateCache);
+  if (functionSymbol == NULL) {
+    return false;
+  }
+  status = getPlatform()->callPlatformFunction(functionSymbol, false, &_invalidateCacheFunc, 0, 0, 0);
+  functionSymbol->release();
+  if (status != kIOReturnSuccess) {
+    return false;
+  }
+
+  if (_invalidateCacheFunc == NULL) {
+    WIISYSLOG("Failed to get cache invalidation function");
+    return false;
+  }
+
+  //
+  // Get MEM2 allocator if on Wii.
+  //
+  if (!checkPlatformCafe()) {
+    functionSymbol = OSSymbol::withCString(kWiiFuncPlatformGetMem2Allocator);
+    if (functionSymbol == NULL) {
       return kIOReturnNoResources;
     }
+    status = getPlatform()->callPlatformFunction(functionSymbol, false, &_mem2Allocator, 0, 0, 0);
+    functionSymbol->release();
+    if (status != kIOReturnSuccess) {
+      return status;
+    }
+
+    if (_mem2Allocator == NULL) {
+      WIISYSLOG("Failed to get MEM2 allocator on Wii");
+      return kIOReturnUnsupported;
+    }
     _mem2Allocator->retain();
-  }*/
+  }
 
   //
   // Check revision.
@@ -121,22 +145,41 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
   //
   // Allocate the HCCA.
   //
+  // Wii platforms are not cache coherent, host controller structures must be non-cacheable.
+  //
   if (_mem2Allocator != NULL) {
-    // Wii TODO.
-    
-
-  //
-  // Wii U can have HCCA located anywhere.
-  //
+    //
+    // Allocate HCCA from MEM2 region.
+    // Wii has issues with device reads/writes that are smaller than 4 bytes to MEM1.
+    //
+    if (!_mem2Allocator->allocate(sizeof (*_hccaPtr), &_hccaPhysAddr, sizeof (*_hccaPtr))) {
+      return kIOReturnNoMemory;
+    }
+    _hccaDesc = IOMemoryDescriptor::withPhysicalAddress(_hccaPhysAddr, sizeof (*_hccaPtr), kIODirectionInOut);
+    if (_hccaDesc == NULL) {
+      return kIOReturnNoMemory;
+    }
+    _hccaMap = _hccaDesc->map(kIOMapInhibitCache);
+    if (_hccaMap == NULL) {
+      return kIOReturnNoMemory;
+    }
+    _hccaPtr = (OHCIHostControllerCommArea*) _hccaMap->getVirtualAddress();
   } else {
     //
-    // Wii platforms are not cache coherent, host controller structures must be non-cacheable.
+    // Allocate HCCA from any memory.
     // Need to allocate an entire page to ensure nothing else will occupy this cache-inhibited area.
     //
-    _hccaPtr = (OHCIHostControllerCommArea*) IOMallocContiguous(PAGE_SIZE, PAGE_SIZE, &_hccaPhysAddr);
+    _hccaDesc = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous, PAGE_SIZE, PAGE_SIZE);
+    if (_hccaDesc == NULL) {
+      return kIOReturnNoMemory;
+    }
+    _hccaPhysAddr = _hccaDesc->getPhysicalSegment(0, &length);
+  
+    _hccaPtr = (OHCIHostControllerCommArea*) ((IOBufferMemoryDescriptor*) _hccaDesc)->getBytesNoCopy();
     if (_hccaPtr == NULL) {
       return kIOReturnNoMemory;
     }
+
     status = IOSetProcessorCacheMode(kernel_task, (IOVirtualAddress) _hccaPtr, PAGE_SIZE, kIOInhibitCache);
     if (status != kIOReturnSuccess) {
       return status;
@@ -223,8 +266,7 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
   _interruptEventSource->enable();
   writeReg32(kOHCIRegIntEnable, kOHCIRegIntEnableMasterInterruptEnable
     | kOHCIRegIntEnableSchedulingOverrun | kOHCIRegIntEnableWritebackDoneHead
-    | kOHCIRegIntEnableResumeDetected | kOHCIRegIntEnableUnrecoverableError
-    /*| kOHCIRegIntEnableFrameNumberOverflow*/);
+    | kOHCIRegIntEnableResumeDetected | kOHCIRegIntEnableUnrecoverableError);
 
   return kIOReturnSuccess;
 }

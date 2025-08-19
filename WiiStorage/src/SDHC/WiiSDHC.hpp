@@ -43,6 +43,9 @@ private:
   queue_head_t              _commandQueue;
 	WiiSDCommand              *_currentCommand;
 
+  // _invalidate_dcache pointer. This function is not exported on 10.4
+  WiiInvalidateDataCacheFunc  _invalidateCacheFunc;
+
   //
   // Controller state.
   //

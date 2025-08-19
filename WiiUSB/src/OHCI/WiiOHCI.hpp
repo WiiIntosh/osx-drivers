@@ -114,6 +114,9 @@ private:
   IOInterruptEventSource  *_interruptEventSource;
   IONaturalMemoryCursor   *_memoryCursor;
 
+  // _invalidate_dcache pointer. This function is not exported on 10.4
+  WiiInvalidateDataCacheFunc  _invalidateCacheFunc;
+
   //
   // Endpoints.
   //
@@ -141,6 +144,8 @@ private:
   OHCIGenTransferData       *_freeGenTransferMem2HeadPtr;
 
   // HCCA.
+  IOMemoryDescriptor          *_hccaDesc;
+  IOMemoryMap                 *_hccaMap;
   IOPhysicalAddress           _hccaPhysAddr;
   OHCIHostControllerCommArea  *_hccaPtr;
 

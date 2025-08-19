@@ -34,6 +34,9 @@ private:
   UInt8     *_strTab;
   UInt32    _strTabSize;
 
+  // _invalidate_dcache pointer. This function is not exported on 10.4
+  WiiInvalidateDataCacheFunc  _invalidateCacheFunc;
+
   bool findKernelMachHeader(void);
   UInt32 resolveKernelSymbol(const char *symbolName);
 
