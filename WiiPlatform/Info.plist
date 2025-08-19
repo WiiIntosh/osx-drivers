@@ -25,7 +25,7 @@
 			<key>IOClass</key>
 			<string>HollywoodInterruptController</string>
 			<key>IONameMatch</key>
-			<string>NTDOY,hlywd-pic</string>
+			<string>NTDOY,hlwd-pic</string>
 			<key>IOProbeScore</key>
 			<integer>1000</integer>
 			<key>IOProviderClass</key>
@@ -90,7 +90,10 @@
 			<key>IOClass</key>
 			<string>WiiPE</string>
 			<key>IONameMatch</key>
-			<string>NTDOY,Cafe</string>
+			<array>
+				<string>NTDOY,Revolution</string>
+				<string>NTDOY,Cafe</string>
+			</array>
 			<key>IOProbeScore</key>
 			<integer>5000</integer>
 			<key>IOProviderClass</key>

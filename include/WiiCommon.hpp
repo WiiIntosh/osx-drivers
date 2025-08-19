@@ -61,8 +61,8 @@
 //
 // Platform functions.
 //
-#define kWiiFuncPlatformIsCafe    "PlatformIsCafe"
-#define kWiiFuncIPCGetRTCBias     "IPCGetRTCBias"
+#define kWiiFuncPlatformGetMem2Allocator  "PlatformGetMem2Allocator"
+#define kWiiFuncIPCGetRTCBias             "IPCGetRTCBias"
 
 //
 // Major kernel version exported from XNU.
@@ -92,6 +92,23 @@ inline KernelVersion getKernelVersion() {
 inline bool checkKernelArgument(const char *name) {
   int val[16];
   return PE_parse_boot_arg(name, val);
+}
+
+//
+// Gets the processor PVR.
+//
+inline UInt32 getProcessorPVR(void) {
+  UInt32 pvr;
+  asm volatile ("mfpvr %0" : "=r"(pvr));
+  return pvr;
+}
+
+//
+// Check if current platform is Cafe.
+//
+#define ESPRESSO_PVR_HIGH 0x70010000
+inline bool checkPlatformCafe(void) {
+  return (getProcessorPVR() & 0xFFFF0000) == ESPRESSO_PVR_HIGH;
 }
 
 //

@@ -48,15 +48,6 @@ bool WiiAudioDriver::initHardware(IOService *provider) {
     return false;
   }
 
-  //
-  // Get platform type.
-  //
-  status = ((IOService*) getPlatform())->callPlatformFunction(kWiiFuncPlatformIsCafe, true, (void*) &_isCafe, NULL, NULL, NULL);
-  if (status != kIOReturnSuccess) {
-    WIISYSLOG("Failed to get platform type");
-    return false;
-  }
-
   setDeviceName ("Built-in Audio");
   setDeviceShortName ("Built-in");
   setManufacturerName("Nintendo");
@@ -95,6 +86,7 @@ bool WiiAudioDriver::initHardware(IOService *provider) {
   //
   // Allocate output buffer.
   //
+  _isCafe = checkPlatformCafe();
   if (_isCafe) {
     _outputBufferDesc = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous, kWiiAudioBufferSize * 2, PAGE_SIZE);
   } else {

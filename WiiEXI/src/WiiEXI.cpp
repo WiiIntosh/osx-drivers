@@ -57,15 +57,6 @@ bool WiiEXI::start(IOService *provider) {
   }
 
   //
-  // Get platform type.
-  //
-  status = ((IOService*) getPlatform())->callPlatformFunction(kWiiFuncPlatformIsCafe, true, (void*) &_isCafe, NULL, NULL, NULL);
-  if (status != kIOReturnSuccess) {
-    WIISYSLOG("Failed to get platform type");
-    return false;
-  }
-
-  //
   // Map controller memory.
   //
   _memoryMap = provider->mapDeviceMemoryWithIndex(0);
@@ -118,6 +109,7 @@ bool WiiEXI::start(IOService *provider) {
   //
   // Get the RTC bias.
   //
+  _isCafe = checkPlatformCafe();
   if (_isCafe) {
     status = waitForService(nameMatching("WiiCafeIPC"))->callPlatformFunction(kWiiFuncIPCGetRTCBias, true, (void*) &_rtcBias, NULL, NULL, NULL);
     if (status != kIOReturnSuccess) {

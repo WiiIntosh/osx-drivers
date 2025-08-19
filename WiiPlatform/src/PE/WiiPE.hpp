@@ -24,7 +24,6 @@ class WiiPE : public IODTPlatformExpert {
   typedef IODTPlatformExpert super;
 
 private:
-  bool                _isCafe;
   IORangeAllocator    *_mem2Allocator;
 
   //

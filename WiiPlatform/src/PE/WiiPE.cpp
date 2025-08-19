@@ -27,7 +27,6 @@ void (*WiiInvalidateDataCacheFunc)(vm_offset_t, unsigned, int) = 0;
 bool WiiPE::init(OSDictionary *dictionary) {
   WiiCheckDebugArgs();
 
-  _isCafe         = false;
   _mem2Allocator  = NULL;
 
   return super::init(dictionary);
@@ -37,14 +36,12 @@ bool WiiPE::init(OSDictionary *dictionary) {
 #define kChipSetTypeMol		170
 
 //
-// Overrides IODTPlatformExpert::start()
+// Overrides IODTPlatformExpert::start().
 //
 bool WiiPE::start(IOService *provider) {
-  PE_Video  videoInfo;
-  UInt32    cpuPvr;
-  OSData    *mem2BufferStart;
-  OSData    *mem2BufferSize;
-  bool      ints;
+  bool    isCafe;
+  OSData  *mem2Data;
+  UInt32  *mem2Addr;
 
   setChipSetType(kChipSetTypeMol);
   setMachineType(kMolStdMachineType);
@@ -53,6 +50,10 @@ bool WiiPE::start(IOService *provider) {
   _pePMFeatures     = kStdDesktopPMFeatures;
   _pePrivPMFeatures = kStdDesktopPrivPMFeatures;      
   _peNumBatteriesSupported = kStdDesktopNumBatteries;
+
+  isCafe = checkPlatformCafe();
+  WIIDBGLOG("Initializing %s platform expert", isCafe ? "Wii U" : "Wii");
+  WIIDBGLOG("PowerPC PVR: 0x%X", getProcessorPVR());
 
   //
   // Get the kernel header and resolve required non-exported functions.
@@ -67,30 +68,24 @@ bool WiiPE::start(IOService *provider) {
   }
 
   //
-  // Get the PowerPC PVR.
-  //
-  asm volatile ("mfpvr %0" : "=r"(cpuPvr));
-  WIIDBGLOG("PowerPC PVR: 0x%X", cpuPvr);
-  _isCafe = (cpuPvr & 0xFFFF0000) == ESPRESSO_PVR_HIGH;
-
-  //
   // Create MEM2 allocator if on Wii.
   //
-  if (!_isCafe) {
-    mem2BufferStart = OSDynamicCast(OSData, provider->getProperty("wii-mem2-start"));
-    mem2BufferSize  = OSDynamicCast(OSData, provider->getProperty("wii-mem2-size"));
-
-    if ((mem2BufferStart == NULL) || (mem2BufferSize == NULL)) {
-      WIISYSLOG("MEM2 buffer properties are missing");
+  if (!isCafe) {
+    mem2Data = OSDynamicCast(OSData, provider->getProperty("mem2-addresses"));
+    if ((mem2Data == NULL) || (mem2Data->getLength() < (sizeof (UInt32) * 2))) {
+      WIISYSLOG("MEM2 addresses are missing or invalid");
       return false;
     }
+
+    mem2Addr = (UInt32 *) mem2Data->getBytesNoCopy();
+    WIIDBGLOG("MEM2 buffer: 0x%X, length: 0x%X", mem2Addr[0], mem2Addr[1]);
 
     _mem2Allocator = IORangeAllocator::withRange(0, 0, 0, IORangeAllocator::kLocking);
     if (_mem2Allocator == NULL) {
       WIISYSLOG("Failed to create MEM2 allocator");
       return false;
     }
-    _mem2Allocator->deallocate(*((UInt32*) mem2BufferStart->getBytesNoCopy()), *((UInt32*) mem2BufferSize->getBytesNoCopy()));
+    _mem2Allocator->deallocate(mem2Addr[0], mem2Addr[1]);
   }
 
   if (!super::start(provider)) {
@@ -108,7 +103,7 @@ bool WiiPE::start(IOService *provider) {
   //
   //getPMRootDomain()->receivePowerNotification(kIOPMPreventSleep);
 
-  WIIDBGLOG("Initialized Wii platform expert");
+  WIIDBGLOG("Initialized platform expert");
   return true;
 }
 
@@ -117,8 +112,16 @@ bool WiiPE::start(IOService *provider) {
 //
 IOReturn WiiPE::callPlatformFunction(const OSSymbol *functionName, bool waitForFunction,
                                 void *param1, void *param2, void *param3, void *param4) {
-  if (functionName->isEqualTo(kWiiFuncPlatformIsCafe)) {
-    *((bool*) param1) = _isCafe;
+  //
+  // Get MEM2 allocator.
+  //
+  if (functionName->isEqualTo(kWiiFuncPlatformGetMem2Allocator)) {
+    WIIDBGLOG("Called %s", kWiiFuncPlatformGetMem2Allocator);
+    if (_mem2Allocator == NULL) {
+      return kIOReturnUnsupported;
+    }
+
+    *((IORangeAllocator**) param1) = _mem2Allocator;
     return kIOReturnSuccess;
   }
 

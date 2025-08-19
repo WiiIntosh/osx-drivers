@@ -40,12 +40,6 @@ bool WiiInterruptController::start(IOService *provider) {
     return false;
   }
 
-  status = ((IOService*) getPlatform())->callPlatformFunction(kWiiFuncPlatformIsCafe, true, (void*) &_isCafe, NULL, NULL, NULL);
-  if (status != kIOReturnSuccess) {
-    WIISYSLOG("Failed to get platform type");
-    return false;
-  }
-
   //
   // Get the interrupt controller name.
   //
@@ -71,6 +65,7 @@ bool WiiInterruptController::start(IOService *provider) {
   // Mask all vectors if they are not already.
   // This should have been done by the bootloader.
   //
+  _isCafe = checkPlatformCafe();
   if (_isCafe) {
     for (int i = 0; i < kWiiPICafeCoreCount; i++) {
       writeCafeIntMask32(i, 0);
