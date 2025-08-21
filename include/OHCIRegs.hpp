@@ -336,6 +336,25 @@ typedef struct {
 OSCompileAssert(sizeof (OHCIIsoTransferDescriptor) == kOHCIIsoTransferDescriptorAlignment);
 
 //
+// OHCI bounce buffer data.
+//
+typedef struct OHCIBounceBuffer {
+  // Pointer to next linked bounce buffer, used for free linked lists.
+  struct OHCIBounceBuffer *next;
+  // Is bounce buffer jumbo?
+  bool                    jumbo;
+
+  // Bounce buffer descriptor.
+  IOMemoryDescriptor      *desc;
+  // Bounce buffer map (Wii only).
+  IOMemoryMap             *map;
+  // Bounce buffer physical address.
+  IOPhysicalAddress       physAddr;
+  // Bounce buffer mapped into kernel memory.
+  void                    *buf;
+} OHCIBounceBuffer;
+
+//
 // OHCI general transfer data.
 //
 typedef struct OHCIGenTransferData {
@@ -348,22 +367,15 @@ typedef struct OHCIGenTransferData {
   // Pointer to parent endpoint.
   OHCIEndpointData            *endpoint;
 
-  // Is transfer the last for a transaction.
-  bool  last;
-  // Is temporary buffer in MEM2?
-  bool  mem2;
-
-  // Temporary buffer descriptor for this transfer.
-  IOMemoryDescriptor  *tmpBuffer;
-  // Temporary buffer physical address.
-  IOPhysicalAddress   tmpBufferPhysAddr;
-  // Temporary buffer pointer mapped into kernel memory.
-  void                *tmpBufferPtr;
-  // Used temporary buffer size.
+  // Bounce buffer.
+  OHCIBounceBuffer    *bounceBuffer;
+  // Used bounce buffer size.
   UInt32              actualBufferSize;
   // Original buffer descriptor.
   IOMemoryDescriptor  *srcBuffer;
 
+  // Is transfer the last for a transaction.
+  bool                last;
   // Completion callback.
   IOUSBCompletion     completion;
 } OHCIGenTransferData;
@@ -381,22 +393,15 @@ typedef struct OHCIIsoTransferData {
   // Pointer to parent endpoint.
   OHCIEndpointData            *endpoint;
 
-  // Is transfer the last for a transaction.
-  bool  last;
-  // Is temporary buffer in MEM2?
-  bool  mem2;
-
-  // Temporary buffer descriptor for this transfer.
-  IOMemoryDescriptor  *tmpBuffer;
-  // Temporary buffer physical address.
-  IOPhysicalAddress   tmpBufferPhysAddr;
-  // Temporary buffer pointer mapped into kernel memory.
-  void                *tmpBufferPtr;
-  // Used temporary buffer size.
+  // Bounce buffer.
+  OHCIBounceBuffer    *bounceBuffer;
+  // Used bounce buffer size.
   UInt32              actualBufferSize;
   // Original buffer descriptor.
   IOMemoryDescriptor  *srcBuffer;
 
+  // Is transfer the last for a transaction.
+  bool                last;
   // Completion callback.
   IOUSBIsocCompletion completion;
   // Isochronous frame.

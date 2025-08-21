@@ -17,7 +17,12 @@
 #include "WiiCommon.hpp"
 #include "OHCIRegs.hpp"
 
-#define kWiiOHCITempBufferSize      0x800
+// On Wii, located in MEM2. On Wii U, located anywhere.
+#define kWiiOHCIBounceBufferSize              0x100
+#define kWiiOHCIBounceBufferInitialCount      128
+// Located in any memory.
+#define kWiiOHCIBounceBufferJumboSize         0x800
+#define kWiiOHCIBounceBufferJumboInitialCount 64
 
 //
 // Total interrupt nodes in tree.
@@ -139,15 +144,28 @@ private:
   //
   // Transfers.
   //
+  // Bounce buffers.
+  OHCIBounceBuffer          *_freeBounceBufferHeadPtr;
+  OHCIBounceBuffer          *_freeBounceBufferJumboHeadPtr;
+
+  // General transfers.
   WiiOHCIGenTransferBuffer  *_genTransferBufferHeadPtr;
   OHCIGenTransferData       *_freeGenTransferHeadPtr;
-  OHCIGenTransferData       *_freeGenTransferMem2HeadPtr;
 
   // HCCA.
   IOMemoryDescriptor          *_hccaDesc;
   IOMemoryMap                 *_hccaMap;
   IOPhysicalAddress           _hccaPhysAddr;
   OHCIHostControllerCommArea  *_hccaPtr;
+
+  // Root hub.
+  UInt16  _rootHubAddress;
+  struct WiiOHCIRootHubIntTransaction {
+    IOMemoryDescriptor  *buffer;
+    UInt32              bufferLength;
+    IOUSBCompletion     completion;
+  } _rootHubInterruptTransactions[4];
+  IOLock  *_rootHubInterruptTransLock;
 
   inline UInt32 readReg32(UInt32 offset) {
     return OSReadBigInt32(_baseAddr, offset);
@@ -162,20 +180,7 @@ private:
     return writeReg32(kOHCIRegRhPortStatusBase + ((port - 1) * sizeof (UInt32)), data);
   }
 
-  UInt16      _rootHubAddress;
-
   void handleInterrupt(IOInterruptEventSource *intEventSource, int count);
-
-
-  //
-  // Root hub simulation.
-  //
-  struct WiiOHCIRootHubIntTransaction {
-    IOMemoryDescriptor  *buffer;
-    UInt32              bufferLength;
-    IOUSBCompletion     completion;
-  } _rootHubInterruptTransactions[4];
-  IOLock  *_rootHubInterruptTransLock;
 
   IOReturn simulateRootHubControlEDCreate(UInt8 endpointNumber, UInt16 maxPacketSize, UInt8 speed);
   IOReturn simulateRootHubInterruptEDCreate(short endpointNumber, UInt8 direction, short speed, UInt16 maxPacketSize);
@@ -184,15 +189,22 @@ private:
   void completeRootHubInterruptTransfer(bool abort);
 
   //
+  // Buffer functions.
+  //
+  OHCIBounceBuffer *allocateBounceBuffer(bool jumbo);
+  OHCIBounceBuffer *getFreeBounceBuffer(bool jumbo);
+  void returnBounceBuffer(OHCIBounceBuffer *bounceBuffer);
+
+  //
   // Descriptor functions.
   //
   IOReturn convertTDStatus(UInt8 ohciStatus);
   OHCIGenTransferData *getGenTransferFromPhys(IOPhysicalAddress physAddr);
   UInt32 getGenTransferBufferRemaining(OHCIGenTransferData *genTransfer);
   IOReturn allocateFreeEndpoints(void);
-  IOReturn allocateFreeGenTransfers(bool mem2);
+  IOReturn allocateFreeGenTransfers(void);
   OHCIEndpointData *getFreeEndpoint(bool isochronous = false);
-  OHCIGenTransferData *getFreeGenTransfer(OHCIEndpointData *endpoint, bool mem2);
+  OHCIGenTransferData *getFreeGenTransfer(OHCIEndpointData *endpoint);
   void returnEndpoint(OHCIEndpointData *endpoint);
   void returnGenTransfer(OHCIGenTransferData *genTransfer);
 

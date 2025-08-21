@@ -100,7 +100,7 @@ IOReturn WiiOHCI::allocateFreeEndpoints(void) {
 //
 // Allocates and adds a page of new general transfers to the free list.
 //
-IOReturn WiiOHCI::allocateFreeGenTransfers(bool mem2) {
+IOReturn WiiOHCI::allocateFreeGenTransfers(void) {
   WiiOHCIGenTransferBuffer  *genTransferBuffer;
   OHCIGenTransferData       *genTransfer;
 
@@ -117,13 +117,8 @@ IOReturn WiiOHCI::allocateFreeGenTransfers(bool mem2) {
   for (UInt32 i = 0; i < kWiiOHCIGenTransfersPerBuffer; i++) {
     genTransfer = genTransferBuffer->getGenTransfer(i);
 
-    if (mem2) {
-      genTransfer->nextTransfer   = _freeGenTransferMem2HeadPtr;
-      _freeGenTransferMem2HeadPtr = genTransfer;
-    } else {
-      genTransfer->nextTransfer = _freeGenTransferHeadPtr;
-      _freeGenTransferHeadPtr   = genTransfer;
-    }
+    genTransfer->nextTransfer = _freeGenTransferHeadPtr;
+    _freeGenTransferHeadPtr   = genTransfer;
   }
 
   return kIOReturnSuccess;
@@ -155,39 +150,25 @@ OHCIEndpointData *WiiOHCI::getFreeEndpoint(bool isochronous) {
 //
 // Gets a free general transfer from the free linked list.
 //
-OHCIGenTransferData *WiiOHCI::getFreeGenTransfer(OHCIEndpointData *endpoint, bool mem2) {
+OHCIGenTransferData *WiiOHCI::getFreeGenTransfer(OHCIEndpointData *endpoint) {
   OHCIGenTransferData *transfer;
 
-  if (mem2) {
-    if (_freeGenTransferMem2HeadPtr == NULL) {
-      if (allocateFreeGenTransfers(true) != kIOReturnSuccess) {
-        return NULL;
-      }  
-    }
-    transfer = _freeGenTransferMem2HeadPtr;
-
-    //
-    // Adjust linkage for remaining free general transfers.
-    //
-    _freeGenTransferMem2HeadPtr = transfer->nextTransfer;
-    transfer->nextTransfer      = NULL;
-  } else {
-    if (_freeGenTransferHeadPtr == NULL) {
-      if (allocateFreeGenTransfers(false) != kIOReturnSuccess) {
-        return NULL;
-      }  
-    }
-    transfer = _freeGenTransferHeadPtr;
-
-    //
-    // Adjust linkage for remaining free general transfers.
-    //
-    _freeGenTransferHeadPtr = transfer->nextTransfer;
-    transfer->nextTransfer  = NULL;
+  if (_freeGenTransferHeadPtr == NULL) {
+    if (allocateFreeGenTransfers() != kIOReturnSuccess) {
+      return NULL;
+    }  
   }
+  transfer = _freeGenTransferHeadPtr;
+
+  //
+  // Adjust linkage for remaining free general transfers.
+  //
+  _freeGenTransferHeadPtr = transfer->nextTransfer;
+  transfer->nextTransfer  = NULL;
 
   transfer->td->nextTDPhysAddr = 0;
   transfer->nextTransfer       = NULL;
+  transfer->bounceBuffer       = NULL;
   transfer->endpoint           = endpoint;
 
   return transfer;
@@ -214,13 +195,13 @@ void WiiOHCI::returnEndpoint(OHCIEndpointData *endpoint) {
 // Returns a genernal transfer to the free linked list.
 //
 void WiiOHCI::returnGenTransfer(OHCIGenTransferData *genTransfer) {
-  if (genTransfer->mem2) {
-    genTransfer->nextTransfer   = _freeGenTransferMem2HeadPtr;
-    _freeGenTransferMem2HeadPtr = genTransfer;
-  } else {
-    genTransfer->nextTransfer   = _freeGenTransferHeadPtr;
-    _freeGenTransferHeadPtr     = genTransfer;
+  if (genTransfer->bounceBuffer != NULL) {
+    returnBounceBuffer(genTransfer->bounceBuffer);
+    genTransfer->bounceBuffer = NULL;
   }
+
+  genTransfer->nextTransfer = _freeGenTransferHeadPtr;
+  _freeGenTransferHeadPtr   = genTransfer;
 }
 
 //
@@ -529,7 +510,7 @@ IOReturn WiiOHCI::addNewEndpoint(UInt8 functionNumber, UInt8 endpointNumber, UIn
   if (isochronous) {
 
   } else {
-    genTransferTail = getFreeGenTransfer(endpoint, false);
+    genTransferTail = getFreeGenTransfer(endpoint);
     if (genTransferTail == NULL) {
       returnEndpoint(endpoint);
       return kIOReturnNoMemory;

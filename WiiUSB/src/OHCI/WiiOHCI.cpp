@@ -25,9 +25,10 @@ bool WiiOHCI::init(OSDictionary *dictionary) {
   _endpointBufferHeadPtr  = NULL;
   _freeEndpointHeadPtr    = NULL;
 
-  _genTransferBufferHeadPtr   = NULL;
-  _freeGenTransferHeadPtr     = NULL;
-  _freeGenTransferMem2HeadPtr = NULL;
+  _freeBounceBufferHeadPtr      = NULL;
+  _freeBounceBufferJumboHeadPtr = NULL;
+  _genTransferBufferHeadPtr     = NULL;
+  _freeGenTransferHeadPtr       = NULL;
 
   _rootHubInterruptTransLock = IOLockAlloc();
   if (_rootHubInterruptTransLock == NULL) {
@@ -45,7 +46,9 @@ bool WiiOHCI::init(OSDictionary *dictionary) {
 // Called from IOUSBController::start().
 //
 IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
-  const OSSymbol  *functionSymbol;
+  const OSSymbol    *functionSymbol;
+  OHCIBounceBuffer  *bounceBuffer;
+
   IOByteCount     length;
   UInt8           ohciRevision;
   UInt32          ohciControl;
@@ -227,6 +230,25 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
   if (status != kIOReturnSuccess) {
     WIISYSLOG("Failed to configure interrupt endpoints");
     return status;
+  }
+
+  //
+  // Allocate initial bounce buffers.
+  //
+  for (UInt32 i = 0; i < kWiiOHCIBounceBufferInitialCount; i++) {
+    bounceBuffer = allocateBounceBuffer(false);
+    if (bounceBuffer == NULL) {
+      return kIOReturnNoMemory;
+    }
+    returnBounceBuffer(bounceBuffer);
+  }
+
+  for (UInt32 i = 0; i < kWiiOHCIBounceBufferJumboInitialCount; i++) {
+    bounceBuffer = allocateBounceBuffer(true);
+    if (bounceBuffer == NULL) {
+      return kIOReturnNoMemory;
+    }
+    returnBounceBuffer(bounceBuffer);
   }
 
   //

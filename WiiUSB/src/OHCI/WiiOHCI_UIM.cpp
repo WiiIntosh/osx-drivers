@@ -41,13 +41,22 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointData *endpoint, IOUSBCompletion 
       //
       // Allocate a new tail general transfer.
       //
-      genTransferTail = getFreeGenTransfer(endpoint, false);
+      genTransferTail = getFreeGenTransfer(endpoint);
       if (genTransferTail == NULL) {
         return kIOReturnNoMemory;
       }
       genTransferCurr = endpoint->genTransferTail;
 
-      transferSize = (bufferRemaining > kWiiOHCITempBufferSize) ? kWiiOHCITempBufferSize : bufferRemaining;
+      //
+      // Get a bounce buffer.
+      //
+      genTransferCurr->bounceBuffer = getFreeBounceBuffer(bufferRemaining > kWiiOHCIBounceBufferSize);
+
+      if (genTransferCurr->bounceBuffer->jumbo) {
+        transferSize = (bufferRemaining > kWiiOHCIBounceBufferJumboSize) ? kWiiOHCIBounceBufferJumboSize : bufferRemaining;
+      } else {
+        transferSize = (bufferRemaining > kWiiOHCIBounceBufferSize) ? kWiiOHCIBounceBufferSize : bufferRemaining;
+      }
       genTransferCurr->srcBuffer = IOMemoryDescriptor::withSubRange(buffer, offset, transferSize, buffer->getDirection());
       if (genTransferCurr->srcBuffer == NULL) {
         WIISYSLOG("Failed to get sub memory descriptor");
@@ -60,11 +69,11 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointData *endpoint, IOUSBCompletion 
       // and buffers not a multiple of 4 on Wii.
       //
       if (genTransferCurr->srcBuffer->getDirection() & kIODirectionOut) {
-        if (genTransferCurr->srcBuffer->readBytes(0, genTransferCurr->tmpBufferPtr, transferSize) != transferSize) {
-          WIISYSLOG("Failed to copy all bytes into double buffer");
+        if (genTransferCurr->srcBuffer->readBytes(0, genTransferCurr->bounceBuffer->buf, transferSize) != transferSize) {
+          WIISYSLOG("Failed to copy all bytes into bounce buffer");
           return kIOReturnDMAError;
         }
-        flushDataCache(genTransferCurr->tmpBufferPtr, transferSize);
+        flushDataCache(genTransferCurr->bounceBuffer->buf, transferSize);
       }
 
       offset          += transferSize;
@@ -78,9 +87,9 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointData *endpoint, IOUSBCompletion 
         genTransferCurr->last       = false;
       }
 
-      genTransferCurr->td->currentBufferPtrPhysAddr = HostToUSBLong(genTransferCurr->tmpBufferPhysAddr);
+      genTransferCurr->td->currentBufferPtrPhysAddr = HostToUSBLong(genTransferCurr->bounceBuffer->physAddr);
       genTransferCurr->td->nextTDPhysAddr           = HostToUSBLong(genTransferTail->physAddr);
-      genTransferCurr->td->bufferEndPhysAddr        = HostToUSBLong(genTransferCurr->tmpBufferPhysAddr + transferSize - 1);
+      genTransferCurr->td->bufferEndPhysAddr        = HostToUSBLong(genTransferCurr->bounceBuffer->physAddr + transferSize - 1);
       genTransferCurr->actualBufferSize             = transferSize;
       genTransferCurr->nextTransfer                 = genTransferTail;
 
@@ -97,7 +106,7 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointData *endpoint, IOUSBCompletion 
     //
     // Allocate a new general transfer.
     //
-    genTransferTail = getFreeGenTransfer(endpoint, false);
+    genTransferTail = getFreeGenTransfer(endpoint);
     if (genTransferTail == NULL) {
       WIISYSLOG("Failed to allocate new TD");
       return kIOReturnNoMemory;
@@ -108,6 +117,7 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointData *endpoint, IOUSBCompletion 
     genTransferCurr->td->currentBufferPtrPhysAddr = 0;
     genTransferCurr->td->bufferEndPhysAddr        = 0;
     genTransferCurr->td->nextTDPhysAddr           = HostToUSBLong(genTransferTail->physAddr);
+    genTransferCurr->bounceBuffer                 = NULL;
     genTransferCurr->actualBufferSize             = 0;
     genTransferCurr->srcBuffer                    = NULL;
     genTransferCurr->completion                   = completion;
@@ -166,13 +176,13 @@ void WiiOHCI::completeTransferQueue(UInt32 headPhysAddr) {
     //
     if (genTransferCurr->srcBuffer != NULL) {
       if (genTransferCurr->srcBuffer->getDirection() & kIODirectionIn) {
-        _invalidateCacheFunc((vm_offset_t) genTransferCurr->tmpBufferPtr, genTransferCurr->actualBufferSize, false);
+        _invalidateCacheFunc((vm_offset_t) genTransferCurr->bounceBuffer->buf, genTransferCurr->actualBufferSize, false);
         if ((genTransferCurr->actualBufferSize - bufferSizeRemaining) > 0) {
-          genTransferCurr->srcBuffer->writeBytes(0, genTransferCurr->tmpBufferPtr, genTransferCurr->actualBufferSize - bufferSizeRemaining);
+          genTransferCurr->srcBuffer->writeBytes(0, genTransferCurr->bounceBuffer->buf, genTransferCurr->actualBufferSize - bufferSizeRemaining);
         }
       }
       OSSafeReleaseNULL(genTransferCurr->srcBuffer);
-      UInt32 *buf = (UInt32*)genTransferCurr->tmpBufferPtr;
+      UInt32 *buf = (UInt32*)genTransferCurr->bounceBuffer->buf;
       WIIDBGLOG("%08X %08X %08X %08X %08X %08X %08X %08X",
         USBToHostLong(buf[0]), USBToHostLong(buf[1]), USBToHostLong(buf[2]), USBToHostLong(buf[3]),
         USBToHostLong(buf[4]), USBToHostLong(buf[5]), USBToHostLong(buf[6]), USBToHostLong(buf[7]));

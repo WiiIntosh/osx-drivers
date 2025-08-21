@@ -124,20 +124,6 @@ WiiOHCIGenTransferBuffer *WiiOHCIGenTransferBuffer::genTransferBuffer(void) {
     genTdBuffer->_genTransfers[i].td           = &genTdBuffer->_genTransferDescriptors[i];
     genTdBuffer->_genTransfers[i].physAddr     = genTdBuffer->_physicalAddr + (i * sizeof (genTdBuffer->_genTransferDescriptors[0]));
     genTdBuffer->_genTransfers[i].nextTransfer = NULL;
-
-    //
-    // Allocate temporary buffer.
-    //
-    genTdBuffer->_genTransfers[i].tmpBuffer = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous, kWiiOHCITempBufferSize, kWiiOHCITempBufferSize);
-    if (genTdBuffer->_genTransfers[i].tmpBuffer == NULL) {
-      return NULL;
-    }
-
-    genTdBuffer->_genTransfers[i].tmpBufferPhysAddr = genTdBuffer->_genTransfers[i].tmpBuffer->getPhysicalSegment(0, &length);
-    genTdBuffer->_genTransfers[i].tmpBufferPtr = ((IOBufferMemoryDescriptor*) genTdBuffer->_genTransfers[i].tmpBuffer)->getBytesNoCopy();
-    if (genTdBuffer->_genTransfers[i].tmpBufferPtr == NULL) {
-      return NULL;
-    }
   }
 
   return genTdBuffer;
@@ -170,4 +156,93 @@ OHCIGenTransferData *WiiOHCIGenTransferBuffer::getGenTransferFromPhysAddr(IOPhys
     return NULL;
   }
   return &_genTransfers[(physAddr & PAGE_MASK) / sizeof (_genTransferDescriptors[0])];
+}
+
+//
+// Allocates a new bounce buffer.
+//
+OHCIBounceBuffer *WiiOHCI::allocateBounceBuffer(bool jumbo) {
+  OHCIBounceBuffer  *bounceBuffer;
+  IOByteCount       length;
+  IOByteCount       bufferLength;
+
+  bounceBuffer = (OHCIBounceBuffer*) IOMalloc(sizeof (OHCIBounceBuffer));
+  if (bounceBuffer == NULL) {
+    return NULL;
+  }
+
+  bounceBuffer->jumbo = jumbo;
+  bounceBuffer->next  = NULL;
+  bufferLength = jumbo ? kWiiOHCIBounceBufferJumboSize : kWiiOHCIBounceBufferSize;
+
+  //
+  // If allocator was provided, use that. Otherwise just allocate from regular kernel memory.
+  //
+  if (_mem2Allocator != NULL) {
+    if (!_mem2Allocator->allocate(bufferLength, &bounceBuffer->physAddr, bufferLength)) {
+      return NULL;
+    }
+
+    bounceBuffer->desc = IOMemoryDescriptor::withPhysicalAddress(bounceBuffer->physAddr, bufferLength, kIODirectionInOut);
+    if (bounceBuffer->desc == NULL) {
+      return NULL;
+    }
+    bounceBuffer->map = bounceBuffer->desc->map(kIOMapCopybackCache);
+    if (bounceBuffer->map == NULL) {
+      return NULL;
+    }
+
+    bounceBuffer->buf = (void*) bounceBuffer->map->getVirtualAddress();
+  } else {
+    bounceBuffer->desc = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous, bufferLength, bufferLength);
+    if (bounceBuffer->desc == NULL) {
+      return NULL;
+    }
+
+    bounceBuffer->map      = NULL;
+    bounceBuffer->physAddr = bounceBuffer->desc->getPhysicalSegment(0, &length);
+    bounceBuffer->buf      = ((IOBufferMemoryDescriptor*) bounceBuffer->desc)->getBytesNoCopy();
+  }
+
+  return bounceBuffer;
+}
+
+//
+// Gets a free bounce buffer, or allocates ones if needed.
+//
+OHCIBounceBuffer *WiiOHCI::getFreeBounceBuffer(bool jumbo) {
+  OHCIBounceBuffer  *bounceBuffer;
+
+  if (jumbo) {
+    bounceBuffer = _freeBounceBufferJumboHeadPtr;
+    if (bounceBuffer != NULL) {
+      _freeBounceBufferJumboHeadPtr = bounceBuffer->next;
+      bounceBuffer->next            = NULL;
+    }
+  } else {
+    bounceBuffer = _freeBounceBufferHeadPtr;
+    if (bounceBuffer != NULL) {
+      _freeBounceBufferHeadPtr = bounceBuffer->next;
+      bounceBuffer->next       = NULL;
+    }
+  }
+
+  if (bounceBuffer == NULL) {
+    bounceBuffer = allocateBounceBuffer(jumbo);
+  }
+
+  return bounceBuffer;
+}
+
+//
+// Returns a bounce buffer to the free list.
+//
+void WiiOHCI::returnBounceBuffer(OHCIBounceBuffer *bounceBuffer) {
+  if (bounceBuffer->jumbo) {
+    bounceBuffer->next = _freeBounceBufferJumboHeadPtr;
+    _freeBounceBufferJumboHeadPtr = bounceBuffer;
+  } else {
+    bounceBuffer->next = _freeBounceBufferHeadPtr;
+    _freeBounceBufferHeadPtr = bounceBuffer;
+  }
 }
