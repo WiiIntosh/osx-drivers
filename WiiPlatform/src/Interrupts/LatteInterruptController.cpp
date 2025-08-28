@@ -10,7 +10,7 @@
 #include <IOKit/IOPlatformExpert.h>
 
 #include "LatteInterruptController.hpp"
-#include "WiiLatte.hpp"
+#include "LatteRegs.hpp"
 #include "WiiProcessorInterface.hpp"
 
 OSDefineMetaClassAndStructors(LatteInterruptController, super);

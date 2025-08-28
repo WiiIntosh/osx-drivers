@@ -1,6 +1,6 @@
 //
-//  WiiLatte.hpp
-//  Wii U Latte MMIO registers
+//  LatteRegs.hpp
+//  Wii U Latte registers
 //
 // See https://wiiubrew.org/wiki/Hardware/Latte_IRQs.
 // See https://wiiubrew.org/wiki/Hardware/Latte_registers.
@@ -8,22 +8,8 @@
 //  Copyright © 2025 John Davis. All rights reserved.
 //
 
-#ifndef WiiLatte_hpp
-#define WiiLatte_hpp
-
-//
-// Latte Wood IPC registers.
-//
-#define kWiiLatteIPCPPCMSG        0x00
-#define kWiiLatteIPCPPCCTRL       0x04
-#define kWiiLatteIPCARMMSG        0x08
-#define kWiiLatteIPCARMCTRL       0x0C
-
-//
-// Base address for Latte interrupts.
-//
-#define kWiiLatteIntBaseAddress         0x0D800440
-#define kWiiLatteIntBaseLength          0x48
+#ifndef LatteRegs_hpp
+#define LatteRegs_hpp
 
 // 64 supported interrupts on Latte.
 #define kWiiLatteIntVectorCount         64

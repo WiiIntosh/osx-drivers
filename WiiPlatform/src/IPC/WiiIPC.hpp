@@ -1,21 +1,21 @@
 //
-//  WiiCafeIPC.hpp
-//  Wii U IPC service
+//  WiiIPC.hpp
+//  Wii IPC services
 //
 //  Copyright © 2025 John Davis. All rights reserved.
 //
 
-#ifndef WiiCafeIPC_hpp
-#define WiiCafeIPC_hpp
+#ifndef WiiIPC_hpp
+#define WiiIPC_hpp
 
 #include <IOKit/IOService.h>
 #include "WiiCommon.hpp"
 
 //
-// Represents the the IPC channel between Starbuck and the PowerPC.
+// Represents the the IPC channel between ARM Starlet/Starbuck and the PowerPC Broadway/Espresso.
 //
-class WiiCafeIPC : public IOService {
-  OSDeclareDefaultStructors(WiiCafeIPC);
+class WiiIPC : public IOService {
+  OSDeclareDefaultStructors(WiiIPC);
   WiiDeclareLogFunctions("ipc");
   typedef IOService super;
 
