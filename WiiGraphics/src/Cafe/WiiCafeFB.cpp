@@ -25,10 +25,9 @@ enum {
 bool WiiCafeFB::init(OSDictionary *dictionary) {
   WiiCheckDebugArgs();
 
-  _debugEnabled = true;
-
   _memoryMap    = NULL;
   _baseAddr     = NULL;
+  _fbMemory     = NULL;
 
   _currentDisplayModeId = 1;
   _currentDepth         = kWiiCafeFBDepth32bpp;
@@ -48,7 +47,7 @@ bool WiiCafeFB::start(IOService *provider) {
   WIIDBGLOG("Initializing Cafe framebuffer");
 
   //
-  // Map interrupt controller memory.
+  // Map controller memory.
   //
   _memoryMap = provider->mapDeviceMemoryWithIndex(0);
   if (_memoryMap == NULL) {
@@ -63,7 +62,7 @@ bool WiiCafeFB::start(IOService *provider) {
   // Get the framebuffer memory.
   //
   _fbMemory = provider->getDeviceMemoryWithIndex(1);
-  if (_memoryMap == NULL) {
+  if (_fbMemory == NULL) {
     WIISYSLOG("Failed to get framebuffer memory");
     return false;
   }
