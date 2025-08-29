@@ -31,18 +31,18 @@
 			<key>IOProviderClass</key>
 			<string>IOPlatformDevice</string>
 		</dict>
-		<key>WiiRvlFB</key>
+		<key>WiiFlipperFB</key>
 		<dict>
 			<key>CFBundleIdentifier</key>
 			<string>__BUNDLE__.__MODULE__</string>
 			<key>IOClass</key>
-			<string>WiiRvlFB</string>
+			<string>WiiFlipperFB</string>
 			<key>IOMatchCategory</key>
 			<string>IOFramebuffer</string>
 			<key>IONameMatch</key>
-			<string>NTDOY,gx</string>
+			<string>NTDOY,video</string>
 			<key>IOProbeScore</key>
-			<integer>1000</integer>
+			<integer>80000</integer>
 			<key>IOProviderClass</key>
 			<string>IOPlatformDevice</string>
 		</dict>
@@ -59,6 +59,6 @@
 		<string>1.1</string>
 	</dict>
 	<key>OSBundleRequired</key>
-	<string>Root</string>
+	<string>Safe Boot</string>
 </dict>
 </plist>

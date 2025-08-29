@@ -1,12 +1,12 @@
 //
-//  WiiRvlFB.hpp
-//  Wii GX graphics framebuffer
+//  WiiFlipperFB.hpp
+//  Wii Flipper graphics framebuffer
 //
 //  Copyright © 2025 John Davis. All rights reserved.
 //
 
-#ifndef WiiRvlFB_hpp
-#define WiiRvlFB_hpp
+#ifndef WiiFlipperFB_hpp
+#define WiiFlipperFB_hpp
 
 #include <IOKit/graphics/IOFramebuffer.h>
 #include "WiiCommon.hpp"
@@ -14,12 +14,17 @@
 //
 // Represents the Wii graphics framebuffer.
 //
-class WiiRvlFB : public IOFramebuffer {
-  OSDeclareDefaultStructors(WiiRvlFB);
+class WiiFlipperFB : public IOFramebuffer {
+  OSDeclareDefaultStructors(WiiFlipperFB);
   WiiDeclareLogFunctions("fb");
   typedef IOFramebuffer super;
 
 private:
+  IOMemoryMap         *_memoryMap;
+  volatile void       *_baseAddr;
+  IODeviceMemory      *_fbMemory;
+  IODeviceMemory      *_xfbMemory;
+
   IOMemoryDescriptor *_xfbMem;
 
 public:
