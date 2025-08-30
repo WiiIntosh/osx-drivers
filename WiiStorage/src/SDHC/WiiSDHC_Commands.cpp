@@ -297,7 +297,7 @@ void WiiSDHC::doAsyncIO(UInt32 intStatus) {
       writeReg32(kSDHCRegTransferMode, transferMode | (commandValue << 16));
       _currentCommand->state = kWiiSDCommandStateCmd;
       break;
-    
+
     //
     // Command has completed and response is ready.
     // For data commands, data transfer will occur afterwards.
@@ -339,7 +339,7 @@ void WiiSDHC::doAsyncIO(UInt32 intStatus) {
       if ((intStatus & (kSDHCRegNormalIntStatusDMAInterrupt | kSDHCRegNormalIntStatusTransferComplete)) == 0) {
         break;
       }
-      
+
     case kWiiSDCommandStateDataTx:
       //
       // Ensure we got either a DMA or a transfer complete interrupt.
@@ -513,5 +513,5 @@ void WiiSDHC::completeIO(IOReturn status) {
   //
   // Check for more work.
   //
-	dispatchNext();	
+	dispatchNext();
 }

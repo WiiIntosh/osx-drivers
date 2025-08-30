@@ -156,7 +156,7 @@ OHCIGenTransferData *WiiOHCI::getFreeGenTransfer(OHCIEndpointData *endpoint) {
   if (_freeGenTransferHeadPtr == NULL) {
     if (allocateFreeGenTransfers() != kIOReturnSuccess) {
       return NULL;
-    }  
+    }
   }
   transfer = _freeGenTransferHeadPtr;
 

@@ -163,7 +163,7 @@ IOReturn LatteInterruptController::handleInterrupt(void *refCon, IOService *nub,
 
     if (!vector->interruptDisabledSoft) {
       isync();
-      
+
       //
       // Call the handler if it exists.
       //

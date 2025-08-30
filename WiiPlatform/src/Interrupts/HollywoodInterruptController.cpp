@@ -159,7 +159,7 @@ IOReturn HollywoodInterruptController::handleInterrupt(void *refCon, IOService *
 
     if (!vector->interruptDisabledSoft) {
       isync();
-      
+
       //
       // Call the handler if it exists.
       //

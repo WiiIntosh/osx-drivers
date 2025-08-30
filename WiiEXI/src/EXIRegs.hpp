@@ -72,7 +72,7 @@ typedef struct {
   UInt16  checksum[2];
   UInt32  ead[2];
   SInt32  counterBias;
-  SInt8   displayOffsetH;  
+  SInt8   displayOffsetH;
   UInt8   ntd;
   UInt8   language;
   UInt8   flags;

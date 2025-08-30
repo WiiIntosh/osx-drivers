@@ -177,7 +177,7 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
       return kIOReturnNoMemory;
     }
     _hccaPhysAddr = _hccaDesc->getPhysicalSegment(0, &length);
-  
+
     _hccaPtr = (OHCIHostControllerCommArea*) ((IOBufferMemoryDescriptor*) _hccaDesc)->getBytesNoCopy();
     if (_hccaPtr == NULL) {
       return kIOReturnNoMemory;

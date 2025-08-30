@@ -16,7 +16,7 @@ typedef struct {
   UInt8 red[256];
   UInt8 green[256];
   UInt8 blue[256];
-} CafeGammaTable;	
+} CafeGammaTable;
 
 typedef struct {
   UInt8 red;

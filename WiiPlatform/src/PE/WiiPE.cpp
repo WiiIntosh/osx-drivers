@@ -42,7 +42,7 @@ bool WiiPE::start(IOService *provider) {
   setBootROMType(kBootROMTypeNewWorld);
 
   _pePMFeatures     = kStdDesktopPMFeatures;
-  _pePrivPMFeatures = kStdDesktopPrivPMFeatures;      
+  _pePrivPMFeatures = kStdDesktopPrivPMFeatures;
   _peNumBatteriesSupported = kStdDesktopNumBatteries;
 
   isCafe = checkPlatformCafe();

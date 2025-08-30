@@ -123,7 +123,7 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointData *endpoint, IOUSBCompletion 
     genTransferCurr->completion                   = completion;
     genTransferCurr->nextTransfer                 = genTransferTail;
     genTransferCurr->last                         = true;
-  
+
     WIIDBGLOG("Added non-data gen TD phys 0x%X, next 0x%X", genTransferCurr->physAddr, USBToHostLong(genTransferCurr->td->nextTDPhysAddr));
 
     endpoint->genTransferTail    = genTransferTail;

@@ -84,7 +84,7 @@ bool WiiSDHC::start(IOService *provider) {
     WIISYSLOG("Failed to create work loop");
     return false;
   }
-  
+
   //
   // Allocate command gate and interrupt.
   //

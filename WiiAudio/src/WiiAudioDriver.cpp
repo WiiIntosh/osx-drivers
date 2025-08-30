@@ -101,7 +101,7 @@ bool WiiAudioDriver::initHardware(IOService *provider) {
   if (_isCafe) {
     _outputBufferLattePhysAddr = _outputBufferDesc->getPhysicalSegment(kWiiAudioBufferSize, &length);
   }
-  
+
   //
   // Map as I/O. TODO: Is there a better way to do this? Attempting to use IOSetProcessorCache like others doesn't seem to work.
   //
@@ -114,7 +114,7 @@ bool WiiAudioDriver::initHardware(IOService *provider) {
   // Reset DSP and load buffers.
   //
   dspReset();
-  writeAudioReg32(kWiiAudioIntRegControl, readAudioReg32(kWiiAudioIntRegControl) & ~(kWiiAudioIntRegControlDspFreq32kHz));  
+  writeAudioReg32(kWiiAudioIntRegControl, readAudioReg32(kWiiAudioIntRegControl) & ~(kWiiAudioIntRegControlDspFreq32kHz));
   dspLoadSample(_outputBufferPhysAddr, kWiiAudioBufferSize, false);
   if (_isCafe) {
     dspLoadSample(_outputBufferLattePhysAddr, kWiiAudioBufferSize, true);

@@ -93,7 +93,7 @@ IOReturn WiiEXI::readWriteImmData(UInt32 channel, IODirection direction, UInt32 
     WIIDBGLOG("Writing 0x%X", data);
     writeReg32(channel, kWiiEXIRegData, data);
   }
-  
+
   //
   // Perform the transfer. TODO: Probably should have a timeout here.
   //

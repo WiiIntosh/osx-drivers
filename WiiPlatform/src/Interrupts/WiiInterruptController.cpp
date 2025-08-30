@@ -169,7 +169,7 @@ IOReturn WiiInterruptController::handleInterrupt(void *refCon, IOService *nub, i
 
     if (!vector->interruptDisabledSoft) {
       isync();
-      
+
       //
       // Call the handler if it exists.
       //
@@ -207,7 +207,7 @@ int WiiInterruptController::getVectorType(IOInterruptVectorNumber vectorNumber, 
 //
 void WiiInterruptController::disableVectorHard(IOInterruptVectorNumber vectorNumber, IOInterruptVector *vector) {
   UInt32 mask;
-  
+
   if (_isCafe) {
     mask = readCafeIntMask32(0);
     mask &= ~(1 << vectorNumber);

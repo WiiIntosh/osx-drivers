@@ -180,7 +180,7 @@ IOReturn WiiSDHC::resetCard(void) {
   SDCommandResponse   cidResponse;
   UInt8               vendorId;
   IOReturn            status;
-  
+
   //
   // Assume card installed is a v2 SD card.
   // The first reset command is identical for all types.
@@ -319,7 +319,7 @@ IOReturn WiiSDHC::resetCard(void) {
   WIIDBGLOG("Found %s card %s %s", isSDCard() ? "SD" : "MMC", _cardVendorName, _cardProductName);
 
   return kIOReturnSuccess;
-} 
+}
 
 //
 // Initializes the inserted card.

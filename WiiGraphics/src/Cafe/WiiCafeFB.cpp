@@ -411,7 +411,7 @@ IOReturn WiiCafeFB::setCursorImage(void *cursorImage) {
     _cursorHwPtr = (volatile UInt32*) _cursorHwDesc->getBytesNoCopy();
     _cursorHwPhysAddr  = _cursorHwDesc->getPhysicalSegment(0, &length);
   }
-  
+
   if (_cursorBuffer == NULL) {
     _cursorBuffer = (UInt32 *)IOMalloc(kWiiGX2CursorMaxSize);
     if (_cursorBuffer == NULL) {

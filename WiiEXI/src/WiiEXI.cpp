@@ -21,7 +21,7 @@ static int Wii_PE_read_write_time_of_day(unsigned int options, long *secs) {
   }
 
   switch(options) {
-	  case kPEReadTOD:  
+	  case kPEReadTOD:
       *secs = exiService->getRTC();
       return 0;
   }
@@ -84,7 +84,7 @@ bool WiiEXI::start(IOService *provider) {
     WIISYSLOG("Failed to create work loop");
     return false;
   }
-  
+
   //
   // Allocate command gate and interrupt.
   //
@@ -117,7 +117,7 @@ bool WiiEXI::start(IOService *provider) {
       return false;
     }
   }
-  
+
   registerService();
 
   //
