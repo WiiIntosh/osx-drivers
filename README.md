@@ -1,60 +1,53 @@
-# MacWiiSupport
-Wii and Wii U support kernel extension for Mac OS X as part of [WiiIntosh](https://github.com/WiiIntosh/WiiIntosh).
+![WiiIntosh logo](https://github.com/WiiIntosh/.github/blob/main/profile/logo.png?raw=true)
+---
+
+[![Build Status](https://github.com/WiiIntosh/osx-drivers/actions/workflows/main.yml/badge.svg?branch=master)](https://github.com/WiiIntosh/osx-drivers/actions)
+
+Wii and Wii U support kernel extension for Mac OS X as part of [WiiIntosh](https://github.com/WiiIntosh).
 
 Currently tested/built for 10.2-10.4, but will eventually support all versions capable of running on the PowerPC G3 (10.0 - 10.4).
 
-### Supported Wii hardware
-- Primary interrupt controller
-- Hollywood interrupt controller
-- XFB framebuffer (temporary)
-- SD host controller (front SD card slot)
-  - No hotplug
-  - Only supports SDHC cards
-- OHCI USB 1.1 host controller
-  - Only rear ports are currently supported
-  - Isochronous endpoints unsupported (audio/streaming devices)
+### Wii hardware support status
+| Hardware                                            | Supported                                   |
+|-----------------------------------------------------|---------------------------------------------|
+| Broadway primary interrupt controller               | Yes                                         |
+| Hollywood secondary interrupt controller            | Yes                                         |
+| USB 1.1 (OHCI) controller (rear ports)              | No isochronous transfers (audio/streaming)  |
+| USB 1.1 (OHCI) controller (internal Bluetooth)      | No isochronous transfers, BT does not load  |
+| USB 2.0 (EHCI) controller (rear ports)              | No                                          |
+| SD host controller (front SD slot)                  | Yes, SDHC only                              |
+| WiFi via SDIO                                       | No                                          |
+| Audio interface (rear A/V)                          | Yes, not all media may work                 |
+| Flipper video interface                             | 32-bit framebuffer via Starlet -> XFB       |
+| External interface                                  | RTC (partially), slots are nonfunctional    |
+| Serial interface (GameCube controllers)             | No                                          |
+| DVD drive                                           | No                                          |
+| Power/reset switches                                | No                                          |
+| Shutdown/reboot functionality                       | Yes                                         |
 
-### Supported Wii U hardware
-- Primary interrupt controller
-- Latte interrupt controller
-- TV framebuffer (1280x720 at 32bpp, 16bpp, or 8bpp)
-- EXI bus
-  - Real time clock
-- Audio
-  - Gamepad and TV
-  - Some playback may not function
-- SD host controller (front SD card slot)\
-  - No hotplug
-  - Only supports SDHC cards
-- OHCI USB 1.1 host controller
-  - Only rear ports are currently supported
-  - Isochronous endpoints unsupported (audio/streaming devices)
-
-### Unsupported Wii hardware
-- EHCI USB 2.0 controller (rear ports)
-- DVD drive
-- Audio
-- Power/reset switches
-- Console reboot/shutdown
-- Bluetooth (should be possible with full OHCI on versions that have a Bluetooth stack)
-- EXI bus
-  - GameCube memory slots
-  - Real time clock
-- Serial bus
-  - GameCube controller ports
-- WiFi via SDIO controller
-
-### Unsupported Wii U hardware
-- EHCI USB 2.0 controller (external ports)
-- DVD drive
-- Power switch
-- Bluetooth (should be possible with full OHCI on versions that have a Bluetooth stack)
-- WiFi via SDIO controller
-
-### Boot arguments
-See the [module list](Docs/modules.md) for boot arguments for each module.
+### Wii U hardware support status
+| Hardware                                            | Supported                                   |
+|-----------------------------------------------------|---------------------------------------------|
+| Espresso primary interrupt controller               | Yes                                         |
+| Latte secondary interrupt controller                | Yes                                         |
+| USB 1.1 (OHCI) controller (rear ports)              | No isochronous transfers (audio/streaming)  |
+| USB 1.1 (OHCI) controller (internal Bluetooth)      | No isochronous transfers, BT does not load  |
+| USB 1.1 (OHCI) controller (front ports)             | No                                          |
+| USB 2.0 (EHCI) controller (rear ports)              | No                                          |
+| USB 2.0 (EHCI) controller (front ports)             | No                                          |
+| USB 2.0 (EHCI) controller (GamePad)                 | No                                          |
+| SD host controller (front SD slot)                  | Yes, SDHC only                              |
+| WiFi via SDIO                                       | No                                          |
+| Audio interface (rear A/V)                          | Yes, not all media may work                 |
+| Audio interface (GamePad)                           | Yes, not all media may work                 |
+| GX2 video interface                                 | 32-bit framebuffer, hardware cursor         |
+| External interface                                  | RTC (partially)                             |
+| DVD drive                                           | No                                          |
+| Power/reset switches                                | No                                          |
+| Shutdown/reboot functionality                       | Yes                                         |
 
 ### Credits
 - [Apple](https://www.apple.com) for Mac OS X
 - [Goldfish64](https://github.com/Goldfish64) for this software
-- [Wiibrew.org](https://wiibrew.org) for various documents/info
+- [Wiibrew.org](https://wiibrew.org) / [Wiiubrew.org](https://wiiubrew.org) for various documents/info
+- [Yet Another Gamecube Documenation](https://www.gc-forever.com/yagcd/)
