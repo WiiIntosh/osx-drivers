@@ -33,6 +33,14 @@ jobs:
           cd powerpc-kext-ci
           ./install-darling.sh
           sudo darling shell ./install-xcode-tools.sh
+          sudo apt install python3-lzss
           cd ..
 
-      - run: make && ./make-mkext.py
+      - name: Build drivers
+        run: make && ./make-mkext.py
+
+      - name: Upload to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Artifacts
+          path: Wii.mkext
