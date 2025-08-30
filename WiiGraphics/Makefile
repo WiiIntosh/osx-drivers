@@ -4,4 +4,4 @@
 KEXT_NAME		:= WiiGraphics
 SOURCES			:= src/Cafe src/Flipper
 
--include ../common/kext.mk
+include ../common/kext.mk

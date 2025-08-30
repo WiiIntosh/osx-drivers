@@ -1,7 +1,9 @@
 #!/bin/python3
 
 import lzss
+import os
 import struct
+import sys
 import zlib
 
 #
@@ -83,23 +85,23 @@ def create_mkext(kexts):
     mkextSlotOffset += struct.calcsize('>IIIIIIII')
 
   #
-  # Checksum mkext.
+  # Checksum MKEXT.
   #
   mkextChecksum = zlib.adler32(mkext[16:mkextLength], 1)
   struct.pack_into('>I', mkext, 12, mkextChecksum)
 
   return mkext
 
-kexts = [ KextInfo('./WiiPlatform/build_kext/WiiPlatform.kext/Contents/Info.plist', './WiiPlatform/build_kext/WiiPlatform.kext/Contents/MacOS/WiiPlatform'),
-          KextInfo('./WiiStorage/build_kext/WiiStorage.kext/Contents/Info.plist', './WiiStorage/build_kext/WiiStorage.kext/Contents/MacOS/WiiStorage'),
-          KextInfo('./WiiGraphics/build_kext/WiiGraphics.kext/Contents/Info.plist', './WiiGraphics/build_kext/WiiGraphics.kext/Contents/MacOS/WiiGraphics'),
-          KextInfo('./WiiUSB/build_kext/WiiUSB.kext/Contents/Info.plist', './WiiUSB/build_kext/WiiUSB.kext/Contents/MacOS/WiiUSB'),
-          KextInfo('./WiiEXI/build_kext/WiiEXI.kext/Contents/Info.plist', './WiiEXI/build_kext/WiiEXI.kext/Contents/MacOS/WiiEXI'),
-          KextInfo('./WiiAudio/build_kext/WiiAudio.kext/Contents/Info.plist', './WiiAudio/build_kext/WiiAudio.kext/Contents/MacOS/WiiAudio')
-        ]
+#
+# Build list of kext files.
+#
+kexts = [ ]
+kext_dir = sys.argv[1] #'./build_pkg/Kexts'
+for kext in os.listdir(kext_dir):
+  kexts.append(KextInfo(kext_dir + '/' + kext + '/Contents/Info.plist', kext_dir + '/' + kext + '/Contents/MacOS/' + kext.removesuffix('.kext')))
 
 #
-# Build the MKEXT
+# Build the MKEXT.
 #
 read_kexts(kexts)
 mkext = create_mkext(kexts)
@@ -107,5 +109,6 @@ mkext = create_mkext(kexts)
 #
 # Save to file.
 #
-with open('Wii.mkext', 'wb') as f:
+mkext_path = sys.argv[2] # Wii.mkext
+with open(mkext_path, 'wb') as f:
   f.write(mkext)

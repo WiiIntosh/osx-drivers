@@ -1,10 +1,4 @@
 #
-# Global kernel extension info.
-#
-KEXT_VERSION		:=	0.0.1
-KEXT_BUNDLE_ID	:=	fish.goldfish64.WiiIntosh
-
-#
 # Toolchain configuration.
 #
 DARLING_SHELL	:= 	sudo darling shell
@@ -43,6 +37,8 @@ KEXT_BUNDLE		:=	$(BUILD_KEXT)/$(KEXT_NAME).kext
 
 INCLUDE				:=	$(foreach dir,$(INCLUDES),-I$(dir))
 DEPENDENCIES 	:= 	$(OFILES:.o=.d)
+
+include ../common/kext_info.mk
 
 .PHONY: $(BUILD) $(KEXT_BUNDLE) clean
 

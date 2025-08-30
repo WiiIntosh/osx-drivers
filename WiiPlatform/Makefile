@@ -4,4 +4,4 @@
 KEXT_NAME		:= WiiPlatform
 SOURCES			:= src src/Interrupts src/IPC src/PE
 
--include ../common/kext.mk
+include ../common/kext.mk
