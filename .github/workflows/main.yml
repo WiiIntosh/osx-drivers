@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v5
+    - uses: actions/checkout@v5
+      with:
+        repository: WiiIntosh/powerpc-kext-ci
+        token: ${{ secrets.POWERPC_KEXT_CI }}
+        fetch-depth: 1
+        lfs: true
+        path: powerpc-kext-ci
+
+    - name: CI bootstrap
+      run: |
+        cd powerpc-kext-ci
+        ./install-darling.sh
+        sudo darling shell ./install-xcode-tools.sh
+        cd ..
+
+    - run: make && ./make-mkext.py
