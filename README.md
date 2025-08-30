@@ -3,7 +3,7 @@
 
 [![Build Status](https://github.com/WiiIntosh/osx-drivers/actions/workflows/main.yml/badge.svg?branch=master)](https://github.com/WiiIntosh/osx-drivers/actions)
 
-Wii and Wii U support kernel extension for Mac OS X as part of [WiiIntosh](https://github.com/WiiIntosh).
+Wii and Wii U support kernel extensions for Mac OS X as part of [WiiIntosh](https://github.com/WiiIntosh).
 
 Currently tested/built for 10.2-10.4, but will eventually support all versions capable of running on the PowerPC G3 (10.0 - 10.4).
 
@@ -40,11 +40,21 @@ Currently tested/built for 10.2-10.4, but will eventually support all versions c
 | WiFi via SDIO                                       | No                                          |
 | Audio interface (rear A/V)                          | Yes, not all media may work                 |
 | Audio interface (GamePad)                           | Yes, not all media may work                 |
-| GX2 video interface                                 | 32-bit framebuffer, hardware cursor         |
+| GX2 video interface                                 | 32/16/8-bit TV framebuffer, hardware cursor |
 | External interface                                  | RTC (partially)                             |
 | DVD drive                                           | No                                          |
 | Power/reset switches                                | No                                          |
 | Shutdown/reboot functionality                       | Yes                                         |
+
+### Extensions
+* WiiAudio: audio support
+* WiiEXI: EXI bus and RTC
+* WiiGraphics: Flipper and GX2 graphics support
+* WiiPlatform: Platform expert and IPC support
+* WiiStorage: SDHC support
+* WiiUSB: OHCI support
+
+WiiAudio and WiiGraphics depend on kexts that normally are not part of an installed system's cache (IOAudioFamily and IOGraphicsFamily). These will need to have their `OSBundleRequired` properties changed so that they do.
 
 ### Credits
 - [Apple](https://www.apple.com) for Mac OS X
