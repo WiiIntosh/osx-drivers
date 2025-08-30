@@ -35,4 +35,4 @@ jobs:
           sudo darling shell ./install-xcode-tools.sh
           cd ..
 
-    - run: make && ./make-mkext.py
+      - run: make && ./make-mkext.py
