@@ -37,7 +37,7 @@ jobs:
           cd ..
 
       - name: Build drivers
-        run: make && ./make-mkext.py
+        run: make
 
       - name: Upload to Artifacts
         uses: actions/upload-artifact@v4
