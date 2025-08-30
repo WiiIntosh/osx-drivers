@@ -1,7 +1,7 @@
 ![WiiIntosh logo](https://github.com/WiiIntosh/.github/blob/main/profile/logo.png?raw=true)
 ---
 
-[![Build Status](https://github.com/WiiIntosh/osx-drivers/actions/workflows/main.yml/badge.svg?branch=master)](https://github.com/WiiIntosh/osx-drivers/actions)
+[![Build Status](https://github.com/WiiIntosh/osx-drivers/actions/workflows/main.yml/badge.svg?branch=main)](https://github.com/WiiIntosh/osx-drivers/actions)
 
 Wii and Wii U support kernel extensions for Mac OS X as part of [WiiIntosh](https://github.com/WiiIntosh).
 
