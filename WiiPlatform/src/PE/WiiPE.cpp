@@ -95,7 +95,7 @@ bool WiiPE::start(IOService *provider) {
   //
   // Prevent sleep/doze, Wii hardware is incapable of sleeping but unsure of doze. Seems to cause issues on Wii U and the GPU.
   //
-  //getPMRootDomain()->receivePowerNotification(kIOPMPreventSleep);
+  getPMRootDomain()->receivePowerNotification(kIOPMPreventSleep);
 
   WIIDBGLOG("Initialized platform expert");
   return true;
