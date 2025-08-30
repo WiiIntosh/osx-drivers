@@ -111,7 +111,7 @@ bool WiiEXI::start(IOService *provider) {
   //
   _isCafe = checkPlatformCafe();
   if (_isCafe) {
-    status = waitForService(nameMatching("WiiCafeIPC"))->callPlatformFunction(kWiiFuncIPCGetRTCBias, true, (void*) &_rtcBias, NULL, NULL, NULL);
+    status = waitForService(nameMatching("WiiIPC"))->callPlatformFunction(kWiiFuncIPCGetRTCBias, true, (void*) &_rtcBias, NULL, NULL, NULL);
     if (status != kIOReturnSuccess) {
       WIISYSLOG("Failed to read RTC bias from IPC");
       return false;
