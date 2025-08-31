@@ -1,12 +1,12 @@
 //
-//  WiiAudioDriver.hpp
+//  WiiAudioDevice.hpp
 //  Wii audio driver
 //
 //  Copyright © 2025 John Davis. All rights reserved.
 //
 
-#ifndef WiiAudioDriver_hpp
-#define WiiAudioDriver_hpp
+#ifndef WiiAudioDevice_hpp
+#define WiiAudioDevice_hpp
 
 #include <IOKit/IOFilterInterruptEventSource.h>
 #include <IOKit/audio/IOAudioControl.h>
@@ -17,10 +17,10 @@
 class WiiAudioEngine;
 
 //
-// Represents the Wii audio driver interface.
+// Represents the Wii audio device interface.
 //
-class WiiAudioDriver : public IOAudioDevice {
-  OSDeclareDefaultStructors(WiiAudioDriver);
+class WiiAudioDevice : public IOAudioDevice {
+  OSDeclareDefaultStructors(WiiAudioDevice);
   WiiDeclareLogFunctions("audio");
   typedef IOAudioDevice super;
 
@@ -81,7 +81,7 @@ public:
   bool initHardware(IOService *provider);
 
   //
-  // Driver-Engine functions.
+  // Device-Engine functions.
   //
   IOReturn startAudioDsp(WiiAudioEngine *audioEngine);
   IOReturn stopAudioDsp(WiiAudioEngine *audioEngine);

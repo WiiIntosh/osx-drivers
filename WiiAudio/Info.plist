@@ -16,12 +16,12 @@
 	<string>__VERSION__</string>
 	<key>IOKitPersonalities</key>
 	<dict>
-		<key>WiiAudioDriver</key>
+		<key>WiiAudioDevice</key>
 		<dict>
 			<key>CFBundleIdentifier</key>
 			<string>__BUNDLE__.__MODULE__</string>
 			<key>IOClass</key>
-			<string>WiiAudioDriver</string>
+			<string>WiiAudioDevice</string>
 			<key>IONameMatch</key>
 			<string>NTDOY,audio</string>
 			<key>IOProbeScore</key>

@@ -1,5 +1,5 @@
 //
-//  WiiAudioDriver_Private.cpp
+//  WiiAudioDevice_Private.cpp
 //  Wii audio driver
 //
 //  Copyright © 2025 John Davis. All rights reserved.
@@ -11,14 +11,14 @@
 #include <IOKit/audio/IOAudioToggleControl.h>
 #include <IOKit/audio/IOAudioDefines.h>
 
-#include "WiiAudioDriver.hpp"
+#include "WiiAudioDevice.hpp"
 #include "WiiAudioEngine.hpp"
 #include "AudioRegs.hpp"
 
 //
 // Interrupt handler function.
 //
-void WiiAudioDriver::handleInterrupt(IOInterruptEventSource *intEventSource, int count) {
+void WiiAudioDevice::handleInterrupt(IOInterruptEventSource *intEventSource, int count) {
   // Not called.
 }
 
@@ -27,7 +27,7 @@ void WiiAudioDriver::handleInterrupt(IOInterruptEventSource *intEventSource, int
 //
 // This is a primary interrupt handler, need to spend as little time here as possible.
 //
-bool WiiAudioDriver::filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource) {
+bool WiiAudioDevice::filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource) {
   UInt16 dspControl;
 
   //
@@ -56,7 +56,7 @@ bool WiiAudioDriver::filterInterrupt(IOFilterInterruptEventSource *filterIntEven
 //
 // Handles control changes.
 //
-IOReturn WiiAudioDriver::handleControlChange(IOAudioControl *audioControl, SInt32 oldValue, SInt32 newValue) {
+IOReturn WiiAudioDevice::handleControlChange(IOAudioControl *audioControl, SInt32 oldValue, SInt32 newValue) {
   WIIDBGLOG("Channel: %u, old: %d, new: %d", audioControl->getChannelID(), oldValue, newValue);
   WIIDBGLOG("Current 0x%X", readAudioReg32(kWiiAudioIntRegVolume));
 
@@ -66,7 +66,7 @@ IOReturn WiiAudioDriver::handleControlChange(IOAudioControl *audioControl, SInt3
 //
 // Handles Latte control changes.
 //
-IOReturn WiiAudioDriver::handleLatteControlChange(IOAudioControl *audioControl, SInt32 oldValue, SInt32 newValue) {
+IOReturn WiiAudioDevice::handleLatteControlChange(IOAudioControl *audioControl, SInt32 oldValue, SInt32 newValue) {
   WIIDBGLOG("Channel: %u, old: %d, new: %d", audioControl->getChannelID(), oldValue, newValue);
   WIIDBGLOG("Current 0x%X", readAudioReg32(kWiiAudioIntRegVolume));
 
@@ -76,7 +76,7 @@ IOReturn WiiAudioDriver::handleLatteControlChange(IOAudioControl *audioControl, 
 //
 // Resets the DSP.
 //
-void WiiAudioDriver::dspReset(void) {
+void WiiAudioDevice::dspReset(void) {
   WIIDBGLOG("Resetting DSP");
   UInt16 dspControl = readDspReg16(kWiiAudioDspRegControlStatus) &
     ~(kWiiAudioDspRegControlStatusAudioIntStatus |
@@ -92,7 +92,7 @@ void WiiAudioDriver::dspReset(void) {
 //
 // Loads a sample to be played.
 //
-void WiiAudioDriver::dspLoadSample(IOPhysicalAddress physAddr, IOByteCount length, bool latte) {
+void WiiAudioDevice::dspLoadSample(IOPhysicalAddress physAddr, IOByteCount length, bool latte) {
   WIIDBGLOG("Loading sample: 0x%X, length: 0x%X, Latte: %u", physAddr, length, latte);
   if (latte) {
     writeDspReg16(kWiiAudioDspRegLatteDmaStartHigh, (physAddr >> 16) & 0xFFFF);
@@ -110,7 +110,7 @@ void WiiAudioDriver::dspLoadSample(IOPhysicalAddress physAddr, IOByteCount lengt
 //
 // Starts playback of a loaded sample.
 //
-void WiiAudioDriver::dspStartSample(bool latte) {
+void WiiAudioDevice::dspStartSample(bool latte) {
   WIIDBGLOG("Starting sample, Latte: %u", latte);
   if (latte) {
     writeDspReg16(kWiiAudioDspRegLatteDmaLength, readDspReg16(kWiiAudioDspRegLatteDmaLength) | kWiiAudioDspRegLatteDmaLengthPlay);
@@ -122,7 +122,7 @@ void WiiAudioDriver::dspStartSample(bool latte) {
 //
 // Stops playback of a loaded sample.
 //
-void WiiAudioDriver::dspStopSample(bool latte) {
+void WiiAudioDevice::dspStopSample(bool latte) {
   WIIDBGLOG("Stopping sample, Latte: %u", latte);
   if (latte) {
     writeDspReg16(kWiiAudioDspRegLatteDmaLength, readDspReg16(kWiiAudioDspRegLatteDmaLength) & ~(kWiiAudioDspRegLatteDmaLengthPlay));
@@ -134,7 +134,7 @@ void WiiAudioDriver::dspStopSample(bool latte) {
 //
 // Gets the bytes left in the sample.
 //
-UInt32 WiiAudioDriver::dspGetBytesLeft(bool latte) {
+UInt32 WiiAudioDevice::dspGetBytesLeft(bool latte) {
   if (latte) {
     return (UInt32)(readDspReg16(kWiiAudioDspRegLatteDmaBytesLeft)) << kWiiAudioDspRegLatteDmaBytesLeftShift;
   } else {
@@ -145,7 +145,7 @@ UInt32 WiiAudioDriver::dspGetBytesLeft(bool latte) {
 //
 // Creates an audio engine.
 //
-WiiAudioEngine *WiiAudioDriver::createAudioEngine(void *buffer, IOByteCount bufferLength, const char *description,
+WiiAudioEngine *WiiAudioDevice::createAudioEngine(void *buffer, IOByteCount bufferLength, const char *description,
                                                   IOAudioControl::IntValueChangeHandler controlHandler) {
   WiiAudioEngine  *audioEngine;
   IOAudioControl  *control;
@@ -162,6 +162,22 @@ WiiAudioEngine *WiiAudioDriver::createAudioEngine(void *buffer, IOByteCount buff
     OSSafeReleaseNULL(audioEngine);
     return NULL;
   }
+
+        // Right master output volume.
+ control = IOAudioLevelControl::createVolumeControl(
+                     /* initialValue */   100,
+                     /* minValue     */   0,
+                     /* maxValue     */   100,
+                     /* minDB        */   0,
+                     /* maxDB        */   100,
+                     /* channelID    */   kIOAudioControlChannelIDAll,
+                     /* channelName  */   kIOAudioControlChannelNameAll,
+                     /* cntrlID      */   0, 
+                     /* usage        */   kIOAudioControlUsageOutput );
+
+
+      audioEngine->addDefaultAudioControl( control );
+      control->release();
 
   //
   // Create dummy mute control, this is required for sound in Classic on 10.4.
@@ -182,7 +198,7 @@ WiiAudioEngine *WiiAudioDriver::createAudioEngine(void *buffer, IOByteCount buff
 //
 // Creates audio ports for an audio engine.
 //
-IOReturn WiiAudioDriver::createAudioPorts(WiiAudioEngine *audioEngine, SInt32 type, const char *name) {
+IOReturn WiiAudioDevice::createAudioPorts(WiiAudioEngine *audioEngine, SInt32 type, const char *name) {
   IOAudioPort             *outputPort;
   IOAudioSelectorControl  *outputSelector;
   IOReturn                status;

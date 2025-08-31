@@ -1,5 +1,5 @@
 //
-//  WiiAudioDriver.cpp
+//  WiiAudioDevice.cpp
 //  Wii audio driver
 //
 //  Copyright © 2025 John Davis. All rights reserved.
@@ -7,11 +7,11 @@
 
 #include <IOKit/audio/IOAudioDefines.h>
 
-#include "WiiAudioDriver.hpp"
+#include "WiiAudioDevice.hpp"
 #include "WiiAudioEngine.hpp"
 #include "AudioRegs.hpp"
 
-OSDefineMetaClassAndStructors(WiiAudioDriver, super);
+OSDefineMetaClassAndStructors(WiiAudioDevice, super);
 
 #define kWiiAudioBufferSize     0x10000
 
@@ -20,7 +20,7 @@ extern "C" vm_offset_t ml_io_map(vm_offset_t phys_addr, vm_size_t size);
 //
 // Overrides IOAudioDevice::init().
 //
-bool WiiAudioDriver::init(OSDictionary *dictionary) {
+bool WiiAudioDevice::init(OSDictionary *dictionary) {
   WiiCheckDebugArgs();
 
   _debugEnabled = true;
@@ -36,7 +36,7 @@ bool WiiAudioDriver::init(OSDictionary *dictionary) {
 //
 // Overrides IOAudioDevice::initHardware().
 //
-bool WiiAudioDriver::initHardware(IOService *provider) {
+bool WiiAudioDevice::initHardware(IOService *provider) {
   IOByteCount         length;
   UInt16              dspControl;
   IOReturn            status;
@@ -124,8 +124,8 @@ bool WiiAudioDriver::initHardware(IOService *provider) {
   // Create interrupt.
   //
   _interruptEventSource = IOFilterInterruptEventSource::filterInterruptEventSource(this,
-    OSMemberFunctionCast(IOFilterInterruptEventSource::Action, this, &WiiAudioDriver::handleInterrupt),
-    OSMemberFunctionCast(IOFilterInterruptEventSource::Filter, this, &WiiAudioDriver::filterInterrupt),
+    OSMemberFunctionCast(IOFilterInterruptEventSource::Action, this, &WiiAudioDevice::handleInterrupt),
+    OSMemberFunctionCast(IOFilterInterruptEventSource::Filter, this, &WiiAudioDevice::filterInterrupt),
     _dspDevice, 0);
   if (_interruptEventSource == NULL) {
     WIISYSLOG("Failed to create interrupt");
@@ -137,7 +137,7 @@ bool WiiAudioDriver::initHardware(IOService *provider) {
   // Create audio engines for outputs.
   //
   _audioOutputEngine = createAudioEngine(_outputBuffer, kWiiAudioBufferSize, _isCafe ? "Wii U GamePad" : "Wii A/V",
-    OSMemberFunctionCast(IOAudioControl::IntValueChangeHandler, this, &WiiAudioDriver::handleControlChange));
+    OSMemberFunctionCast(IOAudioControl::IntValueChangeHandler, this, &WiiAudioDevice::handleControlChange));
   if (_audioOutputEngine == NULL) {
     WIISYSLOG("Failed to create audio engine");
     return false;
@@ -152,7 +152,7 @@ bool WiiAudioDriver::initHardware(IOService *provider) {
 
   if (_isCafe) {
     _audioOutputLatteEngine = createAudioEngine(_outputBufferLatte, kWiiAudioBufferSize, "Wii U A/V",
-      OSMemberFunctionCast(IOAudioControl::IntValueChangeHandler, this, &WiiAudioDriver::handleLatteControlChange));
+      OSMemberFunctionCast(IOAudioControl::IntValueChangeHandler, this, &WiiAudioDevice::handleLatteControlChange));
     if (_audioOutputLatteEngine == NULL) {
       WIISYSLOG("Failed to create Latte audio engine");
       return false;
@@ -189,7 +189,7 @@ bool WiiAudioDriver::initHardware(IOService *provider) {
 //
 // Starts audio playback on the specified engine.
 //
-IOReturn WiiAudioDriver::startAudioDsp(WiiAudioEngine *audioEngine) {
+IOReturn WiiAudioDevice::startAudioDsp(WiiAudioEngine *audioEngine) {
   if (audioEngine == NULL) {
     return kIOReturnUnsupported;
   }
@@ -208,7 +208,7 @@ IOReturn WiiAudioDriver::startAudioDsp(WiiAudioEngine *audioEngine) {
 //
 // Stops audio playback on the specified engine.
 //
-IOReturn WiiAudioDriver::stopAudioDsp(WiiAudioEngine *audioEngine) {
+IOReturn WiiAudioDevice::stopAudioDsp(WiiAudioEngine *audioEngine) {
   if (audioEngine == NULL) {
     return kIOReturnUnsupported;
   }
@@ -227,7 +227,7 @@ IOReturn WiiAudioDriver::stopAudioDsp(WiiAudioEngine *audioEngine) {
 //
 // Gets the bytes left on the specified engine.
 //
-UInt32 WiiAudioDriver::getAudioDspBytesLeft(WiiAudioEngine *audioEngine) {
+UInt32 WiiAudioDevice::getAudioDspBytesLeft(WiiAudioEngine *audioEngine) {
   if (audioEngine == NULL) {
     return 0;
   }

@@ -11,7 +11,7 @@
 #include <IOKit/audio/IOAudioEngine.h>
 #include "WiiCommon.hpp"
 
-class WiiAudioDriver;
+class WiiAudioDevice;
 
 //
 // Represents a Wii audio engine.
@@ -22,7 +22,7 @@ class WiiAudioEngine : public IOAudioEngine {
   typedef IOAudioEngine super;
 
 private:
-  WiiAudioDriver    *_audioDriver;
+  WiiAudioDevice    *_audioDevice;
   void              *_sampleBuffer;
   IOByteCount       _sampleBufferLength;
   const char        *_deviceDescription;
@@ -39,7 +39,7 @@ public:
   IOReturn clipOutputSamples(const void *mixBuf, void *sampleBuf, UInt32 firstSampleFrame, UInt32 numSampleFrames,
                              const IOAudioStreamFormat *streamFormat, IOAudioStream *audioStream);
 
-  bool init(WiiAudioDriver *driver, void *buffer, IOByteCount bufferLength, const char *description);
+  bool init(WiiAudioDevice *device, void *buffer, IOByteCount bufferLength, const char *description);
 };
 
 #endif

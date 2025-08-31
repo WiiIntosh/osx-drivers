@@ -7,7 +7,7 @@
 
 #include <IOKit/audio/IOAudioStream.h>
 
-#include "WiiAudioDriver.hpp"
+#include "WiiAudioDevice.hpp"
 #include "WiiAudioEngine.hpp"
 #include "AudioRegs.hpp"
 
@@ -16,14 +16,14 @@ OSDefineMetaClassAndStructors(WiiAudioEngine, super);
 //
 // Initializes the class.
 //
-bool WiiAudioEngine::init(WiiAudioDriver *driver, void *buffer, IOByteCount bufferLength, const char *description) {
+bool WiiAudioEngine::init(WiiAudioDevice *device, void *buffer, IOByteCount bufferLength, const char *description) {
   WiiCheckDebugArgs();
 
   if (!super::init(NULL)) {
     return false;
   }
 
-  _audioDriver        = driver;
+  _audioDevice        = device;
   _sampleBuffer       = buffer;
   _sampleBufferLength = bufferLength;
   _deviceDescription  = description;
@@ -103,7 +103,7 @@ bool WiiAudioEngine::initHardware(IOService *provider) {
 // Gets the current frame being processed by the audio hardware.
 //
 UInt32 WiiAudioEngine::getCurrentSampleFrame() {
-  return (_sampleBufferLength - _audioDriver->getAudioDspBytesLeft(this)) / kWiiAudioBytesPerFrame;
+  return (_sampleBufferLength - _audioDevice->getAudioDspBytesLeft(this)) / kWiiAudioBytesPerFrame;
 }
 
 //
@@ -113,7 +113,7 @@ UInt32 WiiAudioEngine::getCurrentSampleFrame() {
 //
 IOReturn WiiAudioEngine::performAudioEngineStart() {
   takeTimeStamp(false);
-  return _audioDriver->startAudioDsp(this);
+  return _audioDevice->startAudioDsp(this);
 }
 
 //
@@ -122,7 +122,7 @@ IOReturn WiiAudioEngine::performAudioEngineStart() {
 // Stops the audio hardware.
 //
 IOReturn WiiAudioEngine::performAudioEngineStop() {
-  return _audioDriver->stopAudioDsp(this);
+  return _audioDevice->stopAudioDsp(this);
 }
 
 //
