@@ -162,6 +162,7 @@ private:
   IOMemoryMap                 *_hccaMap;
   IOPhysicalAddress           _hccaPhysAddr;
   OHCIHostControllerCommArea  *_hccaPtr;
+  volatile UInt64				      _frameNumber;
 
   // Root hub.
   UInt16  _rootHubAddress;

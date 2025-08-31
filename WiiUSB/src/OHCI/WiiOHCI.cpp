@@ -31,6 +31,8 @@ bool WiiOHCI::init(OSDictionary *dictionary) {
   _freeGenTransferHeadPtr       = NULL;
   _freeIsoTransferHeadPtr       = NULL;
 
+  _frameNumber  = 0;
+
   _rootHubInterruptTransLock = IOLockAlloc();
   if (_rootHubInterruptTransLock == NULL) {
     return false;
@@ -289,7 +291,8 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
   _interruptEventSource->enable();
   writeReg32(kOHCIRegIntEnable, kOHCIRegIntEnableMasterInterruptEnable
     | kOHCIRegIntEnableSchedulingOverrun | kOHCIRegIntEnableWritebackDoneHead
-    | kOHCIRegIntEnableResumeDetected | kOHCIRegIntEnableUnrecoverableError);
+    | kOHCIRegIntEnableResumeDetected | kOHCIRegIntEnableUnrecoverableError
+    | kOHCIRegIntEnableFrameNumberOverflow);
 
   return kIOReturnSuccess;
 }
@@ -310,12 +313,42 @@ UInt32 WiiOHCI::GetBandwidthAvailable(void) {
 return 0;
 }
 
+//
+// Overrides IOUSBController::GetFrameNumber().
+//
+// Gets the current frame number.
+//
 UInt64 WiiOHCI::GetFrameNumber(void) {
-  WIIDBGLOG("start");
-return 0;
+  UInt64 fullFrameNumber;
+  UInt16 hcFrameNumber;
+
+  hcFrameNumber = USBToHostWord(_hccaPtr->frameNumber);
+  fullFrameNumber = _frameNumber + hcFrameNumber;
+  if (hcFrameNumber < 200) {
+    if (readReg32(kOHCIRegIntStatus) & kOHCIRegIntStatusFrameNumberOverflow) {
+      fullFrameNumber += BIT16;
+    }
+  }
+
+  return fullFrameNumber;
 }
 
+//
+// Overrides IOUSBController::GetFrameNumber32().
+//
+// Gets the least significant 32 bits of the current frame number.
+//
 UInt32 WiiOHCI::GetFrameNumber32(void) {
-  WIIDBGLOG("start");
-  return 0;
+  UInt32 halfFrameNumber;
+  UInt16 hcFrameNumber;
+
+  hcFrameNumber = USBToHostWord(_hccaPtr->frameNumber);
+  halfFrameNumber = ((UInt32) _frameNumber) + hcFrameNumber;
+  if (hcFrameNumber < 200) {
+    if (readReg32(kOHCIRegIntStatus) & kOHCIRegIntStatusFrameNumberOverflow) {
+      halfFrameNumber += BIT16;
+    }
+  }
+
+  return halfFrameNumber;
 }

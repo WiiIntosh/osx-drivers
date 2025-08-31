@@ -46,6 +46,16 @@ void WiiOHCI::handleInterrupt(IOInterruptEventSource *intEventSource, int count)
   }
 
   //
+  // Frame number overflow.
+  //
+  if (intStatus & kOHCIRegIntEnableFrameNumberOverflow) {
+    if (USBToHostWord(_hccaPtr->frameNumber) < BIT15) {
+      _frameNumber += BIT16;
+    }
+    writeReg32(kOHCIRegIntStatus, kOHCIRegIntEnableFrameNumberOverflow);
+  }
+
+  //
   // Root hub status change.
   //
   if (intStatus & kOHCIRegIntStatusRootHubStatusChange) {
