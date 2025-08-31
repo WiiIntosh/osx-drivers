@@ -347,7 +347,7 @@ IOReturn WiiOHCI::UIMCreateBulkEndpoint(UInt8 functionNumber, UInt8 endpointNumb
   //
   // Add a new bulk endpoint.
   //
-  return addNewEndpoint(functionNumber, endpointNumber, maxPacketSize, speed, kUSBAnyDirn, _bulkEndpointHeadPtr);
+  return addNewEndpoint(functionNumber, endpointNumber, maxPacketSize, speed, direction, _bulkEndpointHeadPtr);
 }
 
 //

@@ -342,7 +342,7 @@ IOReturn WiiOHCI::initInterruptEndpoints(void) {
   // Endpoint descriptors in the HCCA (32ms) will join to form a tree, ending at the 1ms node.
   // 32ms - 16ms - 8ms - 4ms - 2ms - 1ms
   //
-  for (int i = 0, p = 0, q = 32, z = 0; i < (kWiiOHCIInterruptNodeCount - 1); i++) {
+  for (unsigned int i = 0, p = 0, q = 32, z = 0; i < (kWiiOHCIInterruptNodeCount - 1); i++) {
     if (i < ((q / 2) + p)) {
       z = i + q;
     } else {
@@ -409,6 +409,13 @@ OHCIEndpointData *WiiOHCI::getEndpoint(UInt8 functionNumber, UInt8 endpointNumbe
   //
   if (*type & kWiiOHCIEndpointTypeBulk) {
     endpointId = (functionNumber & kOHCIEDFlagsFuncMask) | (((UInt32)endpointNumber << kOHCIEDFlagsEndpointShift) & kOHCIEDFlagsEndpointMask);
+    if (direction == kUSBOut) {
+      endpointId |= kOHCIEDFlagsDirectionOut;
+    } else if (direction == kUSBIn) {
+      endpointId |= kOHCIEDFlagsDirectionIn;
+    } else {
+      endpointId |= kOHCIEDFlagsDirectionTD;
+    }
 
     prevEndpoint = _bulkEndpointHeadPtr;
     currEndpoint = prevEndpoint->nextEndpoint;
@@ -416,7 +423,7 @@ OHCIEndpointData *WiiOHCI::getEndpoint(UInt8 functionNumber, UInt8 endpointNumbe
       //
       // Check if current endpoint matches.
       //
-      if ((USBToHostLong(currEndpoint->ed->flags) & (kOHCIEDFlagsFuncMask | kOHCIEDFlagsEndpointMask)) == endpointId) {
+      if ((USBToHostLong(currEndpoint->ed->flags) & (kOHCIEDFlagsFuncMask | kOHCIEDFlagsEndpointMask | kOHCIEDFlagsDirectionMask)) == endpointId) {
         *type = kWiiOHCIEndpointTypeBulk;
         if (outPrevEndpoint != NULL) {
           *outPrevEndpoint = prevEndpoint;
@@ -438,6 +445,8 @@ OHCIEndpointData *WiiOHCI::getEndpoint(UInt8 functionNumber, UInt8 endpointNumbe
       endpointId |= kOHCIEDFlagsDirectionOut;
     } else if (direction == kUSBIn) {
       endpointId |= kOHCIEDFlagsDirectionIn;
+    } else {
+      endpointId |= kOHCIEDFlagsDirectionTD;
     }
 
     for (unsigned int i = 0; i < ARRSIZE(_interruptEndpoints); i++) {
@@ -521,6 +530,8 @@ IOReturn WiiOHCI::addNewEndpoint(UInt8 functionNumber, UInt8 endpointNumber, UIn
     flags |= kOHCIEDFlagsDirectionOut;
   } else if (direction == kUSBIn) {
     flags |= kOHCIEDFlagsDirectionIn;
+  } else {
+    flags |= kOHCIEDFlagsDirectionTD;
   }
   endpoint->ed->flags = HostToUSBLong(flags);
 
