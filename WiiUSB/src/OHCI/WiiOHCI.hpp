@@ -260,9 +260,15 @@ protected:
   IOReturn UIMDeleteEndpoint(short functionNumber, short endpointNumber, short direction);
   IOReturn UIMClearEndpointStall(short functionNumber, short endpointNumber, short direction);
   void UIMRootHubStatusChange(void);
-
   void UIMRootHubStatusChange(bool abort);
 
+  //
+  // Version-specific overrides.
+  //
+  IOReturn UIMCreateControlTransfer(short functionNumber, short endpointNumber, IOUSBCommand* command,
+                                    void *CBP, bool bufferRounding, UInt32 bufferSize, short direction);
+  IOReturn UIMCreateControlTransfer(short functionNumber, short endpointNumber, IOUSBCommand* command,
+                                    IOMemoryDescriptor *CBP, bool bufferRounding, UInt32 bufferSize, short direction);
 public:
   //
   // Overrides.

@@ -668,3 +668,35 @@ WIIDBGLOG("start");
 void WiiOHCI::UIMRootHubStatusChange(bool abort) {
 WIIDBGLOG("start");
 }
+
+//
+// Overrides IOUSBController::UIMCreateControlTransfer() (void* version).
+//
+// Executes a USB control transfer.
+// Called from IOUSBController::ControlTransaction().
+//
+// This function is gated and called within the workloop context.
+//
+// In IOUSBFamily, this calls the old-style UIMCreateControlTransfer with a log function that always prints.
+// Implementing the same thing here to prevent that. The bulk/interrupt versions do not do any logging, no need to override those.
+//
+IOReturn WiiOHCI::UIMCreateControlTransfer(short functionNumber, short endpointNumber, IOUSBCommand* command,
+                                           void *CBP, bool bufferRounding, UInt32 bufferSize, short direction) {
+ return UIMCreateControlTransfer(functionNumber, endpointNumber, command->GetUSLCompletion(), CBP, bufferRounding, bufferSize, direction);
+}
+
+//
+// Overrides IOUSBController::UIMCreateControlTransfer() (void* version).
+//
+// Executes a USB control transfer.
+// Called from IOUSBController::ControlTransaction().
+//
+// This function is gated and called within the workloop context.
+//
+// In IOUSBFamily, this calls the old-style UIMCreateControlTransfer with a log function that always prints.
+// Implementing the same thing here to prevent that. The bulk/interrupt versions do not do any logging, no need to override those.
+//
+IOReturn WiiOHCI::UIMCreateControlTransfer(short functionNumber, short endpointNumber, IOUSBCommand* command,
+                                           IOMemoryDescriptor *CBP, bool bufferRounding, UInt32 bufferSize, short direction) {
+  return UIMCreateControlTransfer(functionNumber, endpointNumber, command->GetUSLCompletion(), CBP, bufferRounding, bufferSize, direction);
+}
