@@ -485,13 +485,13 @@ void WiiOHCI::simulateRootHubInterruptTransfer(short endpointNumber, IOUSBComple
   //
   // Find a free slot to simulate the root hub interrupt transfer.
   //
-  IOTakeLock(_rootHubInterruptTransLock);
+  IOLockLock(_rootHubInterruptTransLock);
   for (unsigned int i = 0; i < ARRSIZE(_rootHubInterruptTransactions); i++) {
     if (_rootHubInterruptTransactions[i].completion.action == NULL) {
       _rootHubInterruptTransactions[i].buffer       = CBP;
       _rootHubInterruptTransactions[i].bufferLength = bufferSize;
       _rootHubInterruptTransactions[i].completion   = completion;
-      IOUnlock(_rootHubInterruptTransLock);
+      IOLockUnlock(_rootHubInterruptTransLock);
 
       //
       // Enable the root hub status change interrupt.
@@ -505,7 +505,7 @@ void WiiOHCI::simulateRootHubInterruptTransfer(short endpointNumber, IOUSBComple
   //
   // No available slots.
   //
-  IOUnlock(_rootHubInterruptTransLock);
+  IOLockUnlock(_rootHubInterruptTransLock);
   Complete(completion, kIOReturnNoMemory, bufferSize);
 }
 
