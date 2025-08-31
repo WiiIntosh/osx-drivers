@@ -29,6 +29,7 @@
 // 32 32ms nodes, 16 16ms nodes, 8 8ms nodes, 4 4ms nodes, 2 2ms nodes, 1 1ms node
 //
 #define kWiiOHCIInterruptNodeCount    (32 + 16 + 8 + 4 + 2 + 1)
+#define kWiiOHCIInterruptIsoNode      (kWiiOHCIInterruptNodeCount - 1)
 
 //
 // Endpoint type masks.
@@ -142,6 +143,11 @@ private:
   OHCIEndpointData      *_bulkEndpointHeadPtr;
   OHCIEndpointData      *_bulkEndpointTailPtr;
 
+  // Isochronous endpoints.
+  OHCIEndpointData      *_isoEndpointHeadPtr;
+  OHCIEndpointData      *_isoEndpointTailPtr;
+  UInt32						    _isoBandwidthAvailable;
+
   // Interrupt endpoints.
   OHCIIntEndpoint       _interruptEndpoints[kWiiOHCIInterruptNodeCount];
 
@@ -216,6 +222,7 @@ private:
 
   IOReturn initControlEndpoints(void);
   IOReturn initBulkEndpoints(void);
+  IOReturn initIsoEndpoints(void);
   IOReturn initInterruptEndpoints(void);
   OHCIEndpointData *getEndpoint(UInt8 functionNumber, UInt8 endpointNumber, UInt8 direction,
                                 UInt8 *type, OHCIEndpointData **outPrevEndpoint = NULL);
@@ -233,6 +240,9 @@ private:
   //
   IOReturn doGeneralTransfer(OHCIEndpointData *endpoint, IOUSBCompletion completion,
                              IOMemoryDescriptor *buffer, UInt32 bufferSize, UInt32 flags, UInt32 cmdBits);
+  IOReturn doIsochTransfer(short functionAddress, short endpointNumber, IOUSBIsocCompletion completion, UInt8 direction,
+                           UInt64 frameStart, IOMemoryDescriptor *pBuffer, UInt32 frameCount, void *pFrames,
+                           UInt32 updateFrequency, bool isLowLatency);
   void completeTransferQueue(UInt32 headPhysAddr);
 
 protected:
@@ -269,6 +279,12 @@ protected:
                                     void *CBP, bool bufferRounding, UInt32 bufferSize, short direction);
   IOReturn UIMCreateControlTransfer(short functionNumber, short endpointNumber, IOUSBCommand* command,
                                     IOMemoryDescriptor *CBP, bool bufferRounding, UInt32 bufferSize, short direction);
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_3
+  IOReturn UIMCreateIsochTransfer(short functionAddress, short endpointNumber, IOUSBIsocCompletion completion,
+                                  UInt8 direction, UInt64 frameStart, IOMemoryDescriptor *pBuffer, UInt32 frameCount,
+                                  IOUSBLowLatencyIsocFrame *pFrames, UInt32 updateFrequency);
+#endif
+
 public:
   //
   // Overrides.

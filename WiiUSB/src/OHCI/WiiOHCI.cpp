@@ -229,6 +229,12 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
     return status;
   }
 
+  status = initIsoEndpoints();
+  if (status != kIOReturnSuccess) {
+    WIISYSLOG("Failed to configure isochronous endpoints");
+    return status;
+  }
+
   status = initInterruptEndpoints();
   if (status != kIOReturnSuccess) {
     WIISYSLOG("Failed to configure interrupt endpoints");
@@ -271,7 +277,7 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
   //
   ohciControl = readReg32(kOHCIRegControl) & ~(kOHCIRegControlFuncStateMask);
   ohciControl |= kOHCIRegControlFuncStateOperational | kOHCIRegControlCBSRMask | ohciRemoteWakeup;
-  ohciControl |= kOHCIRegControlPeriodicListEnable | kOHCIRegControlControlListEnable | kOHCIRegControlBulkListEnable;
+  ohciControl |= kOHCIRegControlPeriodicListEnable | kOHCIRegControlIsochronousEnable | kOHCIRegControlControlListEnable | kOHCIRegControlBulkListEnable;
   writeReg32(kOHCIRegControl, ohciControl);
   IOSleep(100);
 
@@ -308,9 +314,13 @@ IOReturn WiiOHCI::UIMFinalize(void) {
   return kIOReturnSuccess;
 }
 
+//
+// Overrides IOUSBController::GetBandwidthAvailable().
+//
+// Gets the number of bytes available per frame for isochronous transfers.
+//
 UInt32 WiiOHCI::GetBandwidthAvailable(void) {
-  WIIDBGLOG("start");
-return 0;
+  return _isoBandwidthAvailable;
 }
 
 //

@@ -311,6 +311,45 @@ IOReturn WiiOHCI::initBulkEndpoints(void) {
 }
 
 //
+// Initializes the isochronous endpoint linked list.
+//
+IOReturn WiiOHCI::initIsoEndpoints(void) {
+  //
+  // Create the tail endpoint.
+  //
+  _isoEndpointTailPtr = getFreeEndpoint(true);
+  if (_isoEndpointTailPtr == NULL) {
+    return kIOReturnNoMemory;
+  }
+
+  //
+  // Controller is to skip the tail endpoint, with this endpoint being the end of the list.
+  //
+  _isoEndpointTailPtr->ed->flags          = HostToUSBLong(kOHCIEDFlagsSkip);
+  _isoEndpointTailPtr->ed->nextEDPhysAddr = HostToUSBLong(0);
+  _isoEndpointTailPtr->nextEndpoint       = NULL;
+
+  //
+  // Create the head endpoint.
+  //
+  _isoEndpointHeadPtr = getFreeEndpoint(true);
+  if (_isoEndpointHeadPtr == NULL) {
+    return kIOReturnNoMemory;
+  }
+
+  //
+  // Controller is to skip the head endpoint, points to the tail endpoint.
+  //
+  _isoEndpointHeadPtr->ed->flags          = HostToUSBLong(kOHCIEDFlagsSkip);
+  _isoEndpointHeadPtr->ed->nextEDPhysAddr = HostToUSBLong(_isoEndpointTailPtr->physAddr);
+  _isoEndpointHeadPtr->nextEndpoint       = _isoEndpointTailPtr;
+
+  _isoBandwidthAvailable = kUSBMaxFSIsocEndpointReqCount;
+
+  return kIOReturnSuccess;
+}
+
+//
 // Initializes the interrupt endpoint tree and HCCA area.
 //
 IOReturn WiiOHCI::initInterruptEndpoints(void) {
@@ -365,7 +404,12 @@ IOReturn WiiOHCI::initInterruptEndpoints(void) {
     _interruptEndpoints[i].tailEndpoint                     = _interruptEndpoints[i].headEndpoint->nextEndpoint;
   }
 
-  // TODO: isochronous endpoint chain
+  //
+  // Attach isochronous endpoint descriptors to the last interrupt slot.
+  //
+  _interruptEndpoints[kWiiOHCIInterruptIsoNode].headEndpoint->ed->nextEDPhysAddr = HostToUSBLong(_isoEndpointHeadPtr->physAddr);
+  _interruptEndpoints[kWiiOHCIInterruptIsoNode].headEndpoint->nextEndpoint       = _isoEndpointHeadPtr;
+  _interruptEndpoints[kWiiOHCIInterruptIsoNode].tailEndpoint                     = _isoEndpointHeadPtr->nextEndpoint;
 
   return kIOReturnSuccess;
 }
@@ -425,6 +469,38 @@ OHCIEndpointData *WiiOHCI::getEndpoint(UInt8 functionNumber, UInt8 endpointNumbe
       //
       if ((USBToHostLong(currEndpoint->ed->flags) & (kOHCIEDFlagsFuncMask | kOHCIEDFlagsEndpointMask | kOHCIEDFlagsDirectionMask)) == endpointId) {
         *type = kWiiOHCIEndpointTypeBulk;
+        if (outPrevEndpoint != NULL) {
+          *outPrevEndpoint = prevEndpoint;
+        }
+        return currEndpoint;
+      }
+
+      prevEndpoint = currEndpoint;
+      currEndpoint = prevEndpoint->nextEndpoint;
+    }
+  }
+
+  //
+  // Search for isochronous endpoint.
+  //
+  if (*type & kWiiOHCIEndpointTypeIsochronous) {
+    endpointId = (functionNumber & kOHCIEDFlagsFuncMask) | (((UInt32)endpointNumber << kOHCIEDFlagsEndpointShift) & kOHCIEDFlagsEndpointMask);
+    if (direction == kUSBOut) {
+      endpointId |= kOHCIEDFlagsDirectionOut;
+    } else if (direction == kUSBIn) {
+      endpointId |= kOHCIEDFlagsDirectionIn;
+    } else {
+      endpointId |= kOHCIEDFlagsDirectionTD;
+    }
+
+    prevEndpoint = _isoEndpointHeadPtr;
+    currEndpoint = prevEndpoint->nextEndpoint;
+    while (currEndpoint != _isoEndpointTailPtr) {
+      //
+      // Check if current endpoint matches.
+      //
+      if ((USBToHostLong(currEndpoint->ed->flags) & (kOHCIEDFlagsFuncMask | kOHCIEDFlagsEndpointMask | kOHCIEDFlagsDirectionMask)) == endpointId) {
+        *type = kWiiOHCIEndpointTypeIsochronous;
         if (outPrevEndpoint != NULL) {
           *outPrevEndpoint = prevEndpoint;
         }

@@ -135,6 +135,18 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointData *endpoint, IOUSBCompletion 
 }
 
 //
+// Submits an isochronous transfer to be executed by the OHCI controller.
+//
+// This function is gated and called within the workloop context.
+//
+IOReturn WiiOHCI::doIsochTransfer(short functionAddress, short endpointNumber, IOUSBIsocCompletion completion, UInt8 direction,
+                                  UInt64 frameStart, IOMemoryDescriptor *pBuffer, UInt32 frameCount, void *pFrames,
+                                  UInt32 updateFrequency, bool isLowLatency) {
+
+  return kIOReturnUnsupported;
+}
+
+//
 // Walks the completed transfer descriptor queue and completes each one.
 //
 // This function is gated and called within the workloop context.
@@ -486,8 +498,75 @@ IOReturn WiiOHCI::UIMCreateInterruptTransfer(short functionNumber, short endpoin
 // This function is gated and called within the workloop context.
 //
 IOReturn WiiOHCI::UIMCreateIsochEndpoint(short functionAddress, short endpointNumber, UInt32 maxPacketSize, UInt8 direction) {
-  WIIDBGLOG("start");
-  return kIOReturnUnsupported;
+  OHCIEndpointData  *endpoint;
+  UInt8             endpointType;
+  UInt32            endpointFlags;
+  UInt32            currMaxPacketSize;
+  UInt32            diffMaxPacketSize;
+  IOReturn          status;
+
+  WIIDBGLOG("F: %d, EP: %u, dir: %d, sz: %u", functionAddress, endpointNumber, direction, maxPacketSize);
+
+  //
+  // Attempt to find existing isochronous endpoint.
+  //
+  endpointType = kWiiOHCIEndpointTypeIsochronous;
+  endpoint     = getEndpoint(functionAddress, endpointNumber, direction, &endpointType);
+  if (endpoint != NULL) {
+    WIIDBGLOG("Found existing endpoint, adjusting iso bandwidth to sz: %u", maxPacketSize);
+
+    endpointFlags     = USBToHostLong(endpoint->ed->flags);
+    currMaxPacketSize = ((endpointFlags & kOHCIEDFlagsMaxPktSizeMask) >> kOHCIEDFlagsMaxPktSizeShift);
+    if (maxPacketSize == currMaxPacketSize) {
+      WIIDBGLOG("Iso bandwidth requested is the same for sz: %u", maxPacketSize);
+      return kIOReturnSuccess;
+    }
+
+    //
+    // More bandwidth requested.
+    //
+    if (maxPacketSize > currMaxPacketSize) {
+      diffMaxPacketSize = maxPacketSize - currMaxPacketSize;
+      if (diffMaxPacketSize > _isoBandwidthAvailable) {
+        WIIDBGLOG("No remaining iso bandwidth for sz: %u, available: %u", diffMaxPacketSize, _isoBandwidthAvailable);
+        return kIOReturnNoBandwidth;
+      }
+      _isoBandwidthAvailable -= diffMaxPacketSize;
+
+    //
+    // Less bandwidth requested, return the difference.
+    //
+    } else {
+      diffMaxPacketSize = currMaxPacketSize - maxPacketSize;
+      _isoBandwidthAvailable += diffMaxPacketSize;
+    }
+
+    //
+    // Update the endpoint flags with new max packet size.
+    //
+    endpointFlags &= ~(kOHCIEDFlagsMaxPktSizeMask);
+    endpointFlags |= ((maxPacketSize << kOHCIEDFlagsMaxPktSizeShift) & kOHCIEDFlagsMaxPktSizeMask);
+    endpoint->ed->flags = HostToUSBLong(endpointFlags);
+    return kIOReturnSuccess;
+  }
+
+  if (maxPacketSize > _isoBandwidthAvailable) {
+    WIIDBGLOG("No remaining iso bandwidth for sz: %u, available: %u", maxPacketSize, _isoBandwidthAvailable);
+    return kIOReturnNoBandwidth;
+  }
+
+  //
+  // Add new isochronous endpoint.
+  //
+  status = addNewEndpoint(functionAddress, endpointNumber, maxPacketSize, kUSBDeviceSpeedFull,
+    direction, _isoEndpointHeadPtr, true);
+  if (status != kIOReturnSuccess) {
+    return status;
+  }
+
+  _isoBandwidthAvailable -= maxPacketSize;
+  WIIDBGLOG("Allocated iso bandwidth for sz: %u, available: %u", maxPacketSize, _isoBandwidthAvailable);
+  return kIOReturnSuccess;
 }
 
 //
@@ -500,8 +579,9 @@ IOReturn WiiOHCI::UIMCreateIsochEndpoint(short functionAddress, short endpointNu
 //
 IOReturn WiiOHCI::UIMCreateIsochTransfer(short functionAddress, short endpointNumber, IOUSBIsocCompletion completion, UInt8 direction,
                                          UInt64 frameStart, IOMemoryDescriptor *pBuffer, UInt32 frameCount, IOUSBIsocFrame *pFrames) {
-  WIIDBGLOG("start");
-  return kIOReturnUnsupported;
+  WIISYSLOG("F: %d, EP: %u, dir: %d, frm: %llu, fc: %u", functionAddress, endpointNumber, direction, frameStart, frameCount);
+  return doIsochTransfer(functionAddress, endpointNumber, completion, direction, frameStart, pBuffer,
+    frameCount, (void *) pBuffer, 0, false);
 }
 
 //
@@ -559,6 +639,7 @@ IOReturn WiiOHCI::UIMDeleteEndpoint(short functionNumber, short endpointNumber, 
   OHCIEndpointData  *prevEndpoint;
   UInt8             endpointType;
   UInt32            listMask;
+  UInt32            maxPacketSize;
 
   WIIDBGLOG("F: %d, EP: %d, dir: %d", functionNumber, endpointNumber, direction);
 
@@ -618,6 +699,15 @@ IOReturn WiiOHCI::UIMDeleteEndpoint(short functionNumber, short endpointNumber, 
   prevEndpoint->ed->nextEDPhysAddr = endpoint->ed->nextEDPhysAddr;
   writeReg32(kOHCIRegControl, readReg32(kOHCIRegControl) | listMask);
   WIIDBGLOG("Unlinked EP phys: 0x%X", endpoint->physAddr);
+
+  //
+  // Free bandwidth from isochronous endpoints.
+  //
+  if (endpoint->isochronous) {
+    maxPacketSize = (USBToHostLong(endpoint->ed->flags) & kOHCIEDFlagsMaxPktSizeMask) >> kOHCIEDFlagsMaxPktSizeShift;
+    _isoBandwidthAvailable += maxPacketSize;
+    WIIDBGLOG("Returned iso bandwidth: %u bytes, available: %u", maxPacketSize, _isoBandwidthAvailable);
+  }
 
   //
   // Remove all transfers associated with endpoint and remove the endpoint.
@@ -700,3 +790,24 @@ IOReturn WiiOHCI::UIMCreateControlTransfer(short functionNumber, short endpointN
                                            IOMemoryDescriptor *CBP, bool bufferRounding, UInt32 bufferSize, short direction) {
   return UIMCreateControlTransfer(functionNumber, endpointNumber, command->GetUSLCompletion(), CBP, bufferRounding, bufferSize, direction);
 }
+
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_3
+//
+// Overrides IOUSBController::UIMCreateIsochTransfer().
+//
+// Executes a low-latency USB isochronous transfer.
+// Called from IOUSBController::LowLatencyIsocTransaction().
+//
+// This function is gated and called within the workloop context.
+//
+// This function is specific to 10.3 and newer.
+//
+IOReturn WiiOHCI::UIMCreateIsochTransfer(short functionAddress, short endpointNumber, IOUSBIsocCompletion completion,
+                                         UInt8 direction, UInt64 frameStart, IOMemoryDescriptor *pBuffer, UInt32 frameCount,
+                                         IOUSBLowLatencyIsocFrame *pFrames, UInt32 updateFrequency) {
+  WIIDBGLOG("F: %d, EP: %u, dir: %d, fr: %llu, fc: %u, up: %u", functionAddress, endpointNumber, direction,
+    frameStart, frameCount, updateFrequency);
+  return doIsochTransfer(functionAddress, endpointNumber, completion, direction, frameStart, pBuffer,
+    frameCount, (void *) pFrames, updateFrequency, true);
+}
+#endif
