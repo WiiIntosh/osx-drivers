@@ -27,8 +27,9 @@ bool WiiOHCI::init(OSDictionary *dictionary) {
 
   _freeBounceBufferHeadPtr      = NULL;
   _freeBounceBufferJumboHeadPtr = NULL;
-  _genTransferBufferHeadPtr     = NULL;
+  _transferBufferHeadPtr        = NULL;
   _freeGenTransferHeadPtr       = NULL;
+  _freeIsoTransferHeadPtr       = NULL;
 
   _rootHubInterruptTransLock = IOLockAlloc();
   if (_rootHubInterruptTransLock == NULL) {

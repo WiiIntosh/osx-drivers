@@ -14,11 +14,11 @@
 //
 IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointData *endpoint, IOUSBCompletion completion,
                                     IOMemoryDescriptor *buffer, UInt32 bufferSize, UInt32 flags, UInt32 cmdBits) {
-  OHCIGenTransferData   *genTransferCurr;
-  OHCIGenTransferData   *genTransferTail;
-  UInt32                bufferRemaining;
-  UInt32                transferSize;
-  UInt32                offset;
+  OHCITransferData  *genTransferCurr;
+  OHCITransferData  *genTransferTail;
+  UInt32            bufferRemaining;
+  UInt32            transferSize;
+  UInt32            offset;
 
   //
   // Ensure the endpoint is not halted.
@@ -41,11 +41,11 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointData *endpoint, IOUSBCompletion 
       //
       // Allocate a new tail general transfer.
       //
-      genTransferTail = getFreeGenTransfer(endpoint);
+      genTransferTail = getFreeTransfer(endpoint);
       if (genTransferTail == NULL) {
         return kIOReturnNoMemory;
       }
-      genTransferCurr = endpoint->genTransferTail;
+      genTransferCurr = endpoint->transferTail;
 
       //
       // Get a bounce buffer.
@@ -79,24 +79,24 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointData *endpoint, IOUSBCompletion 
       offset          += transferSize;
       bufferRemaining -= transferSize;
       if (offset >= bufferSize) {
-        genTransferCurr->td->flags  = HostToUSBLong(flags);
-        genTransferCurr->completion = completion;
-        genTransferCurr->last       = true;
+        genTransferCurr->genTD->flags  = HostToUSBLong(flags);
+        genTransferCurr->genCompletion = completion;
+        genTransferCurr->last          = true;
       } else {
-        genTransferCurr->td->flags  = HostToUSBLong(flags & ~(kOHCIGenTDFlagsBufferRounding));
-        genTransferCurr->last       = false;
+        genTransferCurr->genTD->flags  = HostToUSBLong(flags & ~(kOHCIGenTDFlagsBufferRounding));
+        genTransferCurr->last          = false;
       }
 
-      genTransferCurr->td->currentBufferPtrPhysAddr = HostToUSBLong(genTransferCurr->bounceBuffer->physAddr);
-      genTransferCurr->td->nextTDPhysAddr           = HostToUSBLong(genTransferTail->physAddr);
-      genTransferCurr->td->bufferEndPhysAddr        = HostToUSBLong(genTransferCurr->bounceBuffer->physAddr + transferSize - 1);
-      genTransferCurr->actualBufferSize             = transferSize;
-      genTransferCurr->nextTransfer                 = genTransferTail;
+      genTransferCurr->genTD->currentBufferPtrPhysAddr = HostToUSBLong(genTransferCurr->bounceBuffer->physAddr);
+      genTransferCurr->genTD->nextTDPhysAddr           = HostToUSBLong(genTransferTail->physAddr);
+      genTransferCurr->genTD->bufferEndPhysAddr        = HostToUSBLong(genTransferCurr->bounceBuffer->physAddr + transferSize - 1);
+      genTransferCurr->actualBufferSize                = transferSize;
+      genTransferCurr->nextTransfer                    = genTransferTail;
 
-      WIIDBGLOG("GenTD phys: 0x%X, next 0x%X, buf 0x%X, ep 0x%X, frm 0x%X", genTransferCurr->physAddr, USBToHostLong(genTransferCurr->td->nextTDPhysAddr),
-        USBToHostLong(genTransferCurr->td->currentBufferPtrPhysAddr), endpoint->physAddr, readReg32(kOHCIRegFmNumber));
+      WIIDBGLOG("GenTD phys: 0x%X, next 0x%X, buf 0x%X, ep 0x%X, frm 0x%X", genTransferCurr->physAddr, USBToHostLong(genTransferCurr->genTD->nextTDPhysAddr),
+        USBToHostLong(genTransferCurr->genTD->currentBufferPtrPhysAddr), endpoint->physAddr, readReg32(kOHCIRegFmNumber));
 
-      endpoint->genTransferTail    = genTransferTail;
+      endpoint->transferTail       = genTransferTail;
       endpoint->ed->tailTDPhysAddr = HostToUSBLong(genTransferTail->physAddr);
       writeReg32(kOHCIRegCmdStatus, cmdBits);
     }
@@ -106,27 +106,27 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointData *endpoint, IOUSBCompletion 
     //
     // Allocate a new general transfer.
     //
-    genTransferTail = getFreeGenTransfer(endpoint);
+    genTransferTail = getFreeTransfer(endpoint);
     if (genTransferTail == NULL) {
       WIISYSLOG("Failed to allocate new TD");
       return kIOReturnNoMemory;
     }
-    genTransferCurr = endpoint->genTransferTail;
+    genTransferCurr = endpoint->transferTail;
 
-    genTransferCurr->td->flags                    = HostToUSBLong(flags);
-    genTransferCurr->td->currentBufferPtrPhysAddr = 0;
-    genTransferCurr->td->bufferEndPhysAddr        = 0;
-    genTransferCurr->td->nextTDPhysAddr           = HostToUSBLong(genTransferTail->physAddr);
-    genTransferCurr->bounceBuffer                 = NULL;
-    genTransferCurr->actualBufferSize             = 0;
-    genTransferCurr->srcBuffer                    = NULL;
-    genTransferCurr->completion                   = completion;
-    genTransferCurr->nextTransfer                 = genTransferTail;
-    genTransferCurr->last                         = true;
+    genTransferCurr->genTD->flags                    = HostToUSBLong(flags);
+    genTransferCurr->genTD->currentBufferPtrPhysAddr = 0;
+    genTransferCurr->genTD->bufferEndPhysAddr        = 0;
+    genTransferCurr->genTD->nextTDPhysAddr           = HostToUSBLong(genTransferTail->physAddr);
+    genTransferCurr->bounceBuffer                    = NULL;
+    genTransferCurr->actualBufferSize                = 0;
+    genTransferCurr->srcBuffer                       = NULL;
+    genTransferCurr->genCompletion                   = completion;
+    genTransferCurr->nextTransfer                    = genTransferTail;
+    genTransferCurr->last                            = true;
 
-    WIIDBGLOG("Added non-data gen TD phys 0x%X, next 0x%X", genTransferCurr->physAddr, USBToHostLong(genTransferCurr->td->nextTDPhysAddr));
+    WIIDBGLOG("Added non-data gen TD phys 0x%X, next 0x%X", genTransferCurr->physAddr, USBToHostLong(genTransferCurr->genTD->nextTDPhysAddr));
 
-    endpoint->genTransferTail    = genTransferTail;
+    endpoint->transferTail       = genTransferTail;
     endpoint->ed->tailTDPhysAddr = HostToUSBLong(genTransferTail->physAddr);
     writeReg32(kOHCIRegCmdStatus, cmdBits);
   }
@@ -140,11 +140,11 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointData *endpoint, IOUSBCompletion 
 // This function is gated and called within the workloop context.
 //
 void WiiOHCI::completeTransferQueue(UInt32 headPhysAddr) {
-  OHCIGenTransferData   *genTransferCurr;
-  OHCIGenTransferData   *genTransferNext;
-  UInt32                transferStatus;
-  UInt32                bufferSizeRemaining;
-  IOReturn              tdStatus;
+  OHCITransferData  *transferCurr;
+  OHCITransferData  *transferNext;
+  UInt32            transferStatus;
+  UInt32            bufferSizeRemaining;
+  IOReturn          tdStatus;
 
   //
   // Verify there actually is a queue.
@@ -154,35 +154,35 @@ void WiiOHCI::completeTransferQueue(UInt32 headPhysAddr) {
   }
 
   WIIDBGLOG("Head done: 0x%X", headPhysAddr);
-  genTransferCurr = getGenTransferFromPhys(headPhysAddr);
-  if (genTransferCurr == NULL) {
-    WIISYSLOG("head TD is NULL"); // TODO: Handle the isochronous ones.
+  transferCurr = getTransferFromPhys(headPhysAddr);
+  if (transferCurr == NULL) {
+    WIISYSLOG("head TD is NULL");
     while (true);
     return;
   }
 
-  while (genTransferCurr != NULL) {
-    transferStatus = (USBToHostLong(genTransferCurr->td->flags) & kOHCIGenTDFlagsConditionCodeMask) >> kOHCIGenTDFlagsConditionCodeShift;
+  while (transferCurr != NULL) {
+    transferStatus = (USBToHostLong(transferCurr->genTD->flags) & kOHCIGenTDFlagsConditionCodeMask) >> kOHCIGenTDFlagsConditionCodeShift;
     tdStatus = convertTDStatus(transferStatus);
-    WIIDBGLOG("TD phys 0x%X, next 0x%X, stat: 0x%X, 0x%X", genTransferCurr->physAddr, USBToHostLong(genTransferCurr->td->nextTDPhysAddr), transferStatus, tdStatus);
+    WIIDBGLOG("TD phys 0x%X, next 0x%X, stat: 0x%X, 0x%X", transferCurr->physAddr, USBToHostLong(transferCurr->genTD->nextTDPhysAddr), transferStatus, tdStatus);
 
-    bufferSizeRemaining = getGenTransferBufferRemaining(genTransferCurr);
+    bufferSizeRemaining = getGenTransferBufferRemaining(transferCurr);
     WIIDBGLOG("Transferred %u bytes (%u bytes left), ptr 0x%X end 0x%X",
-      genTransferCurr->actualBufferSize - bufferSizeRemaining, bufferSizeRemaining,
-      USBToHostLong(genTransferCurr->td->currentBufferPtrPhysAddr), USBToHostLong(genTransferCurr->td->bufferEndPhysAddr));
+      transferCurr->actualBufferSize - bufferSizeRemaining, bufferSizeRemaining,
+      USBToHostLong(transferCurr->genTD->currentBufferPtrPhysAddr), USBToHostLong(transferCurr->genTD->bufferEndPhysAddr));
 
     //
     // Copy data back into original buffer if this was a read, and only if we actually transfered data.
     //
-    if (genTransferCurr->srcBuffer != NULL) {
-      if (genTransferCurr->srcBuffer->getDirection() & kIODirectionIn) {
-        _invalidateCacheFunc((vm_offset_t) genTransferCurr->bounceBuffer->buf, genTransferCurr->actualBufferSize, false);
-        if ((genTransferCurr->actualBufferSize - bufferSizeRemaining) > 0) {
-          genTransferCurr->srcBuffer->writeBytes(0, genTransferCurr->bounceBuffer->buf, genTransferCurr->actualBufferSize - bufferSizeRemaining);
+    if (transferCurr->srcBuffer != NULL) {
+      if (transferCurr->srcBuffer->getDirection() & kIODirectionIn) {
+        _invalidateCacheFunc((vm_offset_t) transferCurr->bounceBuffer->buf, transferCurr->actualBufferSize, false);
+        if ((transferCurr->actualBufferSize - bufferSizeRemaining) > 0) {
+          transferCurr->srcBuffer->writeBytes(0, transferCurr->bounceBuffer->buf, transferCurr->actualBufferSize - bufferSizeRemaining);
         }
       }
-      OSSafeReleaseNULL(genTransferCurr->srcBuffer);
-      UInt32 *buf = (UInt32*)genTransferCurr->bounceBuffer->buf;
+      OSSafeReleaseNULL(transferCurr->srcBuffer);
+      UInt32 *buf = (UInt32*)transferCurr->bounceBuffer->buf;
       WIIDBGLOG("%08X %08X %08X %08X %08X %08X %08X %08X",
         USBToHostLong(buf[0]), USBToHostLong(buf[1]), USBToHostLong(buf[2]), USBToHostLong(buf[3]),
         USBToHostLong(buf[4]), USBToHostLong(buf[5]), USBToHostLong(buf[6]), USBToHostLong(buf[7]));
@@ -195,9 +195,9 @@ void WiiOHCI::completeTransferQueue(UInt32 headPhysAddr) {
     //
     // Invoke completion if present.
     //
-    if (genTransferCurr->last) {
+    if (transferCurr->last) {
       WIIDBGLOG("Calling completion");
-      Complete(genTransferCurr->completion, tdStatus, bufferSizeRemaining);
+      Complete(transferCurr->genCompletion, tdStatus, bufferSizeRemaining);
     } else {
       WIIDBGLOG("No completion");
 
@@ -206,13 +206,13 @@ void WiiOHCI::completeTransferQueue(UInt32 headPhysAddr) {
       //
       if (tdStatus != kIOReturnSuccess) {
         WIIDBGLOG("Completing short packet");
-        completeFailedEndpointGenTransfers(genTransferCurr->endpoint, tdStatus, bufferSizeRemaining);
+        completeFailedEndpointGenTransfers(transferCurr->endpoint, tdStatus, bufferSizeRemaining);
       }
     }
 
-    genTransferNext = getGenTransferFromPhys(USBToHostLong(genTransferCurr->td->nextTDPhysAddr));
-    returnGenTransfer(genTransferCurr);
-    genTransferCurr = genTransferNext;
+    transferNext = getTransferFromPhys(USBToHostLong(transferCurr->genTD->nextTDPhysAddr));
+    returnTransfer(transferCurr);
+    transferCurr = transferNext;
   }
 }
 

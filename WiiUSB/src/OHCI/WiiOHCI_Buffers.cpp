@@ -8,10 +8,10 @@
 #include "WiiOHCI.hpp"
 
 OSDefineMetaClassAndStructors(WiiOHCIEndpointBuffer, super);
-OSDefineMetaClassAndStructors(WiiOHCIGenTransferBuffer, super);
+OSDefineMetaClassAndStructors(WiiOHCITransferBuffer, super);
 
 //
-// Overrides IOBufferMemoryDescriptor::free().
+// Overrides OSObject::free().
 //
 void WiiOHCIEndpointBuffer::free(void) {
   if (_buffer != NULL) {
@@ -60,18 +60,30 @@ WiiOHCIEndpointBuffer *WiiOHCIEndpointBuffer::endpointBuffer(void) {
   return edBuffer;
 }
 
+//
+// Sets the next buffer in the linked list.
+//
 void WiiOHCIEndpointBuffer::setNextBuffer(WiiOHCIEndpointBuffer *buffer) {
   _nextBuffer = buffer;
 }
 
+//
+// Gets the next buffer in the linked list.
+//
 WiiOHCIEndpointBuffer *WiiOHCIEndpointBuffer::getNextBuffer(void) {
   return _nextBuffer;
 }
 
+//
+// Gets the starting physical address of the buffer.
+//
 IOPhysicalAddress WiiOHCIEndpointBuffer::getPhysAddr(void) {
   return _physicalAddr;
 }
 
+//
+// Gets the endpoint data at the specified index.
+//
 OHCIEndpointData *WiiOHCIEndpointBuffer::getEndpoint(UInt32 index) {
   if (index >= kWiiOHCIEndpointsPerBuffer) {
     return NULL;
@@ -80,9 +92,9 @@ OHCIEndpointData *WiiOHCIEndpointBuffer::getEndpoint(UInt32 index) {
 }
 
 //
-// Overrides IOBufferMemoryDescriptor::free().
+// Overrides OSObject::free().
 //
-void WiiOHCIGenTransferBuffer::free(void) {
+void WiiOHCITransferBuffer::free(void) {
   if (_buffer != NULL) {
     _buffer->complete();
     OSSafeReleaseNULL(_buffer);
@@ -91,14 +103,26 @@ void WiiOHCIGenTransferBuffer::free(void) {
 }
 
 //
-// Allocates a new general transfer buffer.
+// Allocates a new transfer buffer.
 //
-WiiOHCIGenTransferBuffer *WiiOHCIGenTransferBuffer::genTransferBuffer(void) {
-  WiiOHCIGenTransferBuffer  *genTdBuffer;
-  IOByteCount               length;
+WiiOHCITransferBuffer *WiiOHCITransferBuffer::transferBuffer(bool isochronous) {
+  WiiOHCITransferBuffer   *transferBuffer;
+  IOByteCount             numTransfers;
+  IOByteCount             length;
 
-  genTdBuffer = new WiiOHCIGenTransferBuffer;
-  if (genTdBuffer == NULL) {
+  transferBuffer = new WiiOHCITransferBuffer;
+  if (transferBuffer == NULL) {
+    return NULL;
+  }
+  transferBuffer->_isochronous = isochronous;
+
+  //
+  // Allocate the transfer data.
+  //
+  numTransfers = isochronous ? kWiiOHCIIsoTransfersPerBuffer : kWiiOHCIGenTransfersPerBuffer;
+  transferBuffer->_transfers = (OHCITransferData *) IOMalloc(numTransfers * sizeof (OHCITransferData));
+  if (transferBuffer->_transfers == NULL) {
+    transferBuffer->release();
     return NULL;
   }
 
@@ -106,56 +130,80 @@ WiiOHCIGenTransferBuffer *WiiOHCIGenTransferBuffer::genTransferBuffer(void) {
   // Allocate host controller endpoint descriptors out of a page.
   // Wii platforms are not cache coherent, host controller structures must be non-cacheable.
   //
-  genTdBuffer->_buffer = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous, PAGE_SIZE, PAGE_SIZE);
-  if (genTdBuffer->_buffer == NULL) {
-    genTdBuffer->release();
+  transferBuffer->_buffer = IOBufferMemoryDescriptor::withOptions(kIOMemoryPhysicallyContiguous, PAGE_SIZE, PAGE_SIZE);
+  if (transferBuffer->_buffer == NULL) {
+    transferBuffer->release();
     return NULL;
   }
 
-  genTdBuffer->_buffer->prepare();
-  genTdBuffer->_genTransferDescriptors = (OHCIGenTransferDescriptor*) genTdBuffer->_buffer->getBytesNoCopy();
-  genTdBuffer->_physicalAddr           = genTdBuffer->_buffer->getPhysicalSegment(0, &length);
-  IOSetProcessorCacheMode(kernel_task, (IOVirtualAddress) genTdBuffer->_genTransferDescriptors, PAGE_SIZE, kIOInhibitCache);
-
-  //
-  // Configure endpoint data.
-  //
-  for (UInt32 i = 0; i < kWiiOHCIGenTransfersPerBuffer; i++) {
-    genTdBuffer->_genTransfers[i].td           = &genTdBuffer->_genTransferDescriptors[i];
-    genTdBuffer->_genTransfers[i].physAddr     = genTdBuffer->_physicalAddr + (i * sizeof (genTdBuffer->_genTransferDescriptors[0]));
-    genTdBuffer->_genTransfers[i].nextTransfer = NULL;
+  transferBuffer->_buffer->prepare();
+  transferBuffer->_physicalAddr        = transferBuffer->_buffer->getPhysicalSegment(0, &length);
+  if (isochronous) {
+    transferBuffer->_isoTDs = (OHCIIsoTransferDescriptor *) transferBuffer->_buffer->getBytesNoCopy();
+    IOSetProcessorCacheMode(kernel_task, (IOVirtualAddress) transferBuffer->_isoTDs, PAGE_SIZE, kIOInhibitCache);
+  } else {
+    transferBuffer->_genTDs = (OHCIGenTransferDescriptor *) transferBuffer->_buffer->getBytesNoCopy();
+    IOSetProcessorCacheMode(kernel_task, (IOVirtualAddress) transferBuffer->_genTDs, PAGE_SIZE, kIOInhibitCache);
   }
 
-  return genTdBuffer;
+  //
+  // Configure transfer data.
+  //
+  for (UInt32 i = 0; i < (isochronous ? kWiiOHCIIsoTransfersPerBuffer : kWiiOHCIGenTransfersPerBuffer); i++) {
+    transferBuffer->_transfers[i].isochronous = isochronous;
+    if (transferBuffer->_transfers[i].isochronous) {
+      transferBuffer->_transfers[i].isoTD    = &transferBuffer->_isoTDs[i];
+      transferBuffer->_transfers[i].physAddr = transferBuffer->_physicalAddr + (i * sizeof (transferBuffer->_isoTDs[0]));
+    } else {
+      transferBuffer->_transfers[i].genTD    = &transferBuffer->_genTDs[i];
+      transferBuffer->_transfers[i].physAddr = transferBuffer->_physicalAddr + (i * sizeof (transferBuffer->_genTDs[0]));
+    }
+    transferBuffer->_transfers[i].nextTransfer = NULL;
+  }
+
+  return transferBuffer;
 }
 
-void WiiOHCIGenTransferBuffer::setNextBuffer(WiiOHCIGenTransferBuffer *buffer) {
+//
+// Gets the next buffer in the linked list.
+//
+void WiiOHCITransferBuffer::setNextBuffer(WiiOHCITransferBuffer *buffer) {
   _nextBuffer = buffer;
 }
 
-WiiOHCIGenTransferBuffer *WiiOHCIGenTransferBuffer::getNextBuffer(void) {
+//
+// Gets the next buffer in the linked list.
+//
+WiiOHCITransferBuffer *WiiOHCITransferBuffer::getNextBuffer(void) {
   return _nextBuffer;
 }
 
-IOPhysicalAddress WiiOHCIGenTransferBuffer::getPhysAddr(void) {
+//
+// Gets the starting physical address for the buffer.
+//
+IOPhysicalAddress WiiOHCITransferBuffer::getPhysAddr(void) {
   return _physicalAddr;
 }
 
-OHCIGenTransferData *WiiOHCIGenTransferBuffer::getGenTransfer(UInt32 index) {
+
+//
+// Gets a transfer at the specified index.
+//
+OHCITransferData *WiiOHCITransferBuffer::getTransfer(UInt32 index) {
   if (index >= kWiiOHCIGenTransfersPerBuffer) {
     return NULL;
   }
-  return &_genTransfers[index];
+  return &_transfers[index];
 }
 
 //
-// Gets the general transfer data from a given physical address of a general transfer descriptor, assuming this buffer contains it.
+// Gets the transfer data from a given physical address of a transfer descriptor, assuming this buffer contains it.
 //
-OHCIGenTransferData *WiiOHCIGenTransferBuffer::getGenTransferFromPhysAddr(IOPhysicalAddress physAddr) {
+OHCITransferData *WiiOHCITransferBuffer::getTransferFromPhysAddr(IOPhysicalAddress physAddr) {
   if ((physAddr & ~(PAGE_MASK)) != _physicalAddr) {
     return NULL;
   }
-  return &_genTransfers[(physAddr & PAGE_MASK) / sizeof (_genTransferDescriptors[0])];
+  return &_transfers[(physAddr & PAGE_MASK) / (_isochronous ? sizeof (_isoTDs[0]) : sizeof (_genTDs[0]))];
 }
 
 //

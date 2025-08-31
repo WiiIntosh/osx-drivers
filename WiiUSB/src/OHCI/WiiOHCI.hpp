@@ -74,18 +74,22 @@ public:
 };
 
 //
-// OHCI general transfer memory buffer.
+// OHCI transfer memory buffer.
 //
-class WiiOHCIGenTransferBuffer : public OSObject {
-  OSDeclareDefaultStructors(WiiOHCIGenTransferBuffer);
+class WiiOHCITransferBuffer : public OSObject {
+  OSDeclareDefaultStructors(WiiOHCITransferBuffer);
   typedef OSObject super;
 
 private:
   IOBufferMemoryDescriptor  *_buffer;
   IOPhysicalAddress         _physicalAddr;
-  OHCIGenTransferDescriptor *_genTransferDescriptors;
-  WiiOHCIGenTransferBuffer  *_nextBuffer;
-  OHCIGenTransferData       _genTransfers[kWiiOHCIGenTransfersPerBuffer];
+  bool                      _isochronous;
+  union {
+    OHCIGenTransferDescriptor *_genTDs;
+    OHCIIsoTransferDescriptor *_isoTDs;
+  };
+  OHCITransferData          *_transfers;
+  WiiOHCITransferBuffer     *_nextBuffer;
 
 public:
   //
@@ -96,12 +100,12 @@ public:
   //
   // Buffer functions.
   //
-  static WiiOHCIGenTransferBuffer *genTransferBuffer(void);
-  void setNextBuffer(WiiOHCIGenTransferBuffer *buffer);
-  WiiOHCIGenTransferBuffer *getNextBuffer(void);
+  static WiiOHCITransferBuffer *transferBuffer(bool isochronous);
+  void setNextBuffer(WiiOHCITransferBuffer *buffer);
+  WiiOHCITransferBuffer *getNextBuffer(void);
   IOPhysicalAddress getPhysAddr(void);
-  OHCIGenTransferData *getGenTransfer(UInt32 index);
-  OHCIGenTransferData *getGenTransferFromPhysAddr(IOPhysicalAddress physAddr);
+  OHCITransferData *getTransfer(UInt32 index);
+  OHCITransferData *getTransferFromPhysAddr(IOPhysicalAddress physAddr);
 };
 
 //
@@ -148,9 +152,10 @@ private:
   OHCIBounceBuffer          *_freeBounceBufferHeadPtr;
   OHCIBounceBuffer          *_freeBounceBufferJumboHeadPtr;
 
-  // General transfers.
-  WiiOHCIGenTransferBuffer  *_genTransferBufferHeadPtr;
-  OHCIGenTransferData       *_freeGenTransferHeadPtr;
+  // Transfer buffers.
+  WiiOHCITransferBuffer     *_transferBufferHeadPtr;
+  OHCITransferData          *_freeGenTransferHeadPtr;
+  OHCITransferData          *_freeIsoTransferHeadPtr;
 
   // HCCA.
   IOMemoryDescriptor          *_hccaDesc;
@@ -199,14 +204,14 @@ private:
   // Descriptor functions.
   //
   IOReturn convertTDStatus(UInt8 ohciStatus);
-  OHCIGenTransferData *getGenTransferFromPhys(IOPhysicalAddress physAddr);
-  UInt32 getGenTransferBufferRemaining(OHCIGenTransferData *genTransfer);
+  OHCITransferData *getTransferFromPhys(IOPhysicalAddress physAddr);
+  UInt32 getGenTransferBufferRemaining(OHCITransferData *genTransfer);
   IOReturn allocateFreeEndpoints(void);
-  IOReturn allocateFreeGenTransfers(void);
+  IOReturn allocateFreeTransfers(bool isochronous);
   OHCIEndpointData *getFreeEndpoint(bool isochronous = false);
-  OHCIGenTransferData *getFreeGenTransfer(OHCIEndpointData *endpoint);
+  OHCITransferData *getFreeTransfer(OHCIEndpointData *endpoint);
   void returnEndpoint(OHCIEndpointData *endpoint);
-  void returnGenTransfer(OHCIGenTransferData *genTransfer);
+  void returnTransfer(OHCITransferData *transfer);
 
   IOReturn initControlEndpoints(void);
   IOReturn initBulkEndpoints(void);

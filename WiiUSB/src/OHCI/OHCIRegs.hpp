@@ -182,8 +182,7 @@ typedef struct {
 
 OSCompileAssert(sizeof (OHCIHostControllerCommArea) == 256);
 
-struct OHCIGenTransferData;
-struct OHCIIsoTransferData;
+struct OHCITransferData;
 
 //
 // OHCI endpoint descriptor.
@@ -215,22 +214,11 @@ typedef struct OHCIEndpointData {
   // Isochronous endpoint?
   bool                    isochronous;
   // Pointer to the head of the transfer data linked list.
-  union {
-    struct OHCIGenTransferData   *genTransferHead;
-    struct OHCIIsoTransferData   *isoTransferHead;
-  };
+  struct OHCITransferData *transferHead;
   // Pointer to the tail of the transfer data linked list.
-  union {
-    struct OHCIGenTransferData   *genTransferTail;
-    struct OHCIIsoTransferData   *isoTransferTail;
-  };
+  struct OHCITransferData *transferTail;
   // Pointer to the next endpoint.
   struct OHCIEndpointData *nextEndpoint;
-
-  // Pointer to the last transfer data linked to this endpoint.
-//  struct OHCITransferData *tailTransfer;
-  // Pointer to the first transfer data linked to this endpoint.
-//  struct OHCITransferData *headTransfer;
 } OHCIEndpointData;
 
 //
@@ -355,17 +343,25 @@ typedef struct OHCIBounceBuffer {
 } OHCIBounceBuffer;
 
 //
-// OHCI general transfer data.
+// OHCI transfer data (general and isochronous).
 //
-typedef struct OHCIGenTransferData {
-  // OHCI transfer descriptor used by the host controller.
-  OHCIGenTransferDescriptor   *td;
+typedef struct OHCITransferData {
+  // OHCI general or isochronous transfer descriptor used by the host controller.
+  union {
+    OHCIGenTransferDescriptor *genTD;
+    OHCIIsoTransferDescriptor *isoTD;
+  };
+
+  // Isochronous transfer?
+  bool                    isochronous;
   // Physical address of the transfer descriptor.
-  UInt32                      physAddr;
-  // Pointer to next linked general transfer.
-  struct OHCIGenTransferData  *nextTransfer;
+  UInt32                  physAddr;
+  // Pointer to next linked transfer.
+  struct OHCITransferData *nextTransfer;
   // Pointer to parent endpoint.
-  OHCIEndpointData            *endpoint;
+  OHCIEndpointData        *endpoint;
+  // Is transfer the last for a transaction.
+  bool                    last;
 
   // Bounce buffer.
   OHCIBounceBuffer    *bounceBuffer;
@@ -374,40 +370,16 @@ typedef struct OHCIGenTransferData {
   // Original buffer descriptor.
   IOMemoryDescriptor  *srcBuffer;
 
-  // Is transfer the last for a transaction.
-  bool                last;
   // Completion callback.
-  IOUSBCompletion     completion;
-} OHCIGenTransferData;
+  union {
+    IOUSBCompletion     genCompletion;
+    IOUSBIsocCompletion isoCompletion;
+  };
 
-//
-// OHCI isochronous transfer data.
-//
-typedef struct OHCIIsoTransferData {
-  // OHCI transfer descriptor used by the host controller.
-  OHCIIsoTransferDescriptor   *td;
-  // Physical address of the transfer descriptor.
-  UInt32                      physAddr;
-  // Pointer to next linked general transfer.
-  struct OHCIIsoTransferData  *nextTransfer;
-  // Pointer to parent endpoint.
-  OHCIEndpointData            *endpoint;
-
-  // Bounce buffer.
-  OHCIBounceBuffer    *bounceBuffer;
-  // Used bounce buffer size.
-  UInt32              actualBufferSize;
-  // Original buffer descriptor.
-  IOMemoryDescriptor  *srcBuffer;
-
-  // Is transfer the last for a transaction.
-  bool                last;
-  // Completion callback.
-  IOUSBIsocCompletion completion;
   // Isochronous frame.
-  IOUSBIsocFrame      *isoFrame;
+  IOUSBIsocFrame  *isoFrame;
   // Isochronous frame number.
-  UInt32              isoFrameNum;
-} OHCIIsoTransferData;
+  UInt32          isoFrameNum;
+} OHCIGenTransferData;
 
 #endif
