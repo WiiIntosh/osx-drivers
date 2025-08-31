@@ -46,24 +46,41 @@ do {                                     \
 #define ConvertFloatToSInt16(x)          \
 	((SInt16)((x) * kMaxSInt16ValueInFloat))
 
-IOReturn WiiAudioEngine::clipOutputSamples(const void *mixBuf, void * sampleBuf, UInt32 firstSampleFrame, UInt32 numSampleFrames,
+//
+// Overrides IOAudioEngine::clipOutputSamples().
+//
+// Converts mixed samples to 16-bit samples suitable for the hardware.
+//
+IOReturn WiiAudioEngine::clipOutputSamples(const void *mixBuf, void *sampleBuf, UInt32 firstSampleFrame, UInt32 numSampleFrames,
                                            const IOAudioStreamFormat *streamFormat, IOAudioStream *audioStream) {
   float   *inFloatBufferPtr;
   SInt16  *outSInt16BufferPtr;
   UInt32  numSamples;
+  float   adjustment;
 
-  inFloatBufferPtr  = (float *) mixBuf + firstSampleFrame * streamFormat->fNumChannels;
+  numSamples         = numSampleFrames * streamFormat->fNumChannels;
+  inFloatBufferPtr   = (float *) mixBuf + firstSampleFrame * streamFormat->fNumChannels;
   outSInt16BufferPtr = (SInt16 *) sampleBuf + firstSampleFrame * streamFormat->fNumChannels;
   inFloatBufferPtr--;
   outSInt16BufferPtr--;
 
-  numSamples = numSampleFrames * streamFormat->fNumChannels;
+  //
+  // If we are muted, just zero out the sample buffer.
+  //
+  if (_currentMute) {
+    bzero(outSInt16BufferPtr, numSamples * sizeof (SInt16));
+    return kIOReturnSuccess;
+  }
 
+  //
+  // Clip/convert samples with volume adjustment.
+  //
+  adjustment = _logTable[_currentVolume];
   for (UInt32 i = 0; i < (numSamples / 4); i++) {
-    float tempFloat1 = *(++inFloatBufferPtr);
-    float tempFloat2 = *(++inFloatBufferPtr);
-    float tempFloat3 = *(++inFloatBufferPtr);
-    float tempFloat4 = *(++inFloatBufferPtr);
+    float tempFloat1 = *(++inFloatBufferPtr) * adjustment;
+    float tempFloat2 = *(++inFloatBufferPtr) * adjustment;
+    float tempFloat3 = *(++inFloatBufferPtr) * adjustment;
+    float tempFloat4 = *(++inFloatBufferPtr) * adjustment;
 
     ClipFloatValue(tempFloat1);
     ClipFloatValue(tempFloat2);
@@ -76,22 +93,13 @@ IOReturn WiiAudioEngine::clipOutputSamples(const void *mixBuf, void * sampleBuf,
     *(++outSInt16BufferPtr) = ConvertFloatToSInt16(tempFloat4);
   }
 
-  switch (numSamples % 4) {
-    case 3: {
-      float tempFloat = *(++inFloatBufferPtr);
-      ClipFloatValue(tempFloat);
-      *(++outSInt16BufferPtr) = ConvertFloatToSInt16(tempFloat);
-    }
-    case 2: {
-      float tempFloat = *(++inFloatBufferPtr);
-      ClipFloatValue(tempFloat);
-      *(++outSInt16BufferPtr) = ConvertFloatToSInt16(tempFloat);
-    }
-    case 1: {
-      float tempFloat = *(++inFloatBufferPtr);
-      ClipFloatValue(tempFloat);
-      *(++outSInt16BufferPtr) = ConvertFloatToSInt16(tempFloat);
-    }
+  //
+  // Clip/convert any remaining samples.
+  //
+  for (UInt32 i = 0; i < (numSamples % 4); i++) {
+    float tempFloat = *(++inFloatBufferPtr) * adjustment;
+    ClipFloatValue(tempFloat);
+    *(++outSInt16BufferPtr) = ConvertFloatToSInt16(tempFloat);
   }
 
   return kIOReturnSuccess;

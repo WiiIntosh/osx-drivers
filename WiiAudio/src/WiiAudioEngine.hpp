@@ -13,6 +13,9 @@
 
 class WiiAudioDevice;
 
+#define kWiiMinVolume     0
+#define kWiiMaxVolume     99
+
 //
 // Represents a Wii audio engine.
 //
@@ -26,6 +29,15 @@ private:
   void              *_sampleBuffer;
   IOByteCount       _sampleBufferLength;
   const char        *_deviceDescription;
+
+  SInt32            _currentVolume;
+  SInt32            _currentMute;
+  float             _logTable[kWiiMaxVolume + 1];
+
+  IOReturn handleVolumeChange(IOAudioControl *audioControl, SInt32 oldValue, SInt32 newValue);
+  IOReturn handleMuteChange(IOAudioControl *audioControl, SInt32 oldValue, SInt32 newValue);
+  void createVolumeLogTable(void);
+  IOReturn createControls(void);
 
 public:
   //

@@ -60,8 +60,6 @@ private:
 
   void handleInterrupt(IOInterruptEventSource *intEventSource, int count);
   bool filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource);
-  IOReturn handleControlChange(IOAudioControl *audioControl, SInt32 oldValue, SInt32 newValue);
-  IOReturn handleLatteControlChange(IOAudioControl *audioControl, SInt32 oldValue, SInt32 newValue);
 
   void dspReset(void);
   void dspLoadSample(IOPhysicalAddress physAddr, IOByteCount length, bool latte);
@@ -69,8 +67,7 @@ private:
   void dspStopSample(bool latte);
   UInt32 dspGetBytesLeft(bool latte);
 
-  WiiAudioEngine *createAudioEngine(void *buffer, IOByteCount bufferLength, const char *description,
-                                    IOAudioControl::IntValueChangeHandler controlHandler);
+  WiiAudioEngine *createAudioEngine(void *buffer, IOByteCount bufferLength, const char *description);
   IOReturn createAudioPorts(WiiAudioEngine *audioEngine, SInt32 type, const char *name);
 
 public:

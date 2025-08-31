@@ -23,8 +23,6 @@ extern "C" vm_offset_t ml_io_map(vm_offset_t phys_addr, vm_size_t size);
 bool WiiAudioDevice::init(OSDictionary *dictionary) {
   WiiCheckDebugArgs();
 
-  _debugEnabled = true;
-
   _interruptEventSource     = NULL;
   _outputBuffer             = NULL;
   _audioOutputEngine        = NULL;
@@ -136,8 +134,7 @@ bool WiiAudioDevice::initHardware(IOService *provider) {
   //
   // Create audio engines for outputs.
   //
-  _audioOutputEngine = createAudioEngine(_outputBuffer, kWiiAudioBufferSize, _isCafe ? "Wii U GamePad" : "Wii A/V",
-    OSMemberFunctionCast(IOAudioControl::IntValueChangeHandler, this, &WiiAudioDevice::handleControlChange));
+  _audioOutputEngine = createAudioEngine(_outputBuffer, kWiiAudioBufferSize, _isCafe ? "Wii U GamePad" : "Wii A/V");
   if (_audioOutputEngine == NULL) {
     WIISYSLOG("Failed to create audio engine");
     return false;
@@ -151,8 +148,7 @@ bool WiiAudioDevice::initHardware(IOService *provider) {
   }
 
   if (_isCafe) {
-    _audioOutputLatteEngine = createAudioEngine(_outputBufferLatte, kWiiAudioBufferSize, "Wii U A/V",
-      OSMemberFunctionCast(IOAudioControl::IntValueChangeHandler, this, &WiiAudioDevice::handleLatteControlChange));
+    _audioOutputLatteEngine = createAudioEngine(_outputBufferLatte, kWiiAudioBufferSize, "Wii U A/V");
     if (_audioOutputLatteEngine == NULL) {
       WIISYSLOG("Failed to create Latte audio engine");
       return false;

@@ -6,9 +6,7 @@
 //
 
 #include <IOKit/audio/IOAudioPort.h>
-#include <IOKit/audio/IOAudioLevelControl.h>
 #include <IOKit/audio/IOAudioSelectorControl.h>
-#include <IOKit/audio/IOAudioToggleControl.h>
 #include <IOKit/audio/IOAudioDefines.h>
 
 #include "WiiAudioDevice.hpp"
@@ -51,26 +49,6 @@ bool WiiAudioDevice::filterInterrupt(IOFilterInterruptEventSource *filterIntEven
   dspControl &= ~(kWiiAudioDspRegControlStatusDspIntEnable | kWiiAudioDspRegControlStatusAramIntStatus | kWiiAudioDspRegControlStatusDspIntStatus);
   writeDspReg16(kWiiAudioDspRegControlStatus, dspControl);
   return false;
-}
-
-//
-// Handles control changes.
-//
-IOReturn WiiAudioDevice::handleControlChange(IOAudioControl *audioControl, SInt32 oldValue, SInt32 newValue) {
-  WIIDBGLOG("Channel: %u, old: %d, new: %d", audioControl->getChannelID(), oldValue, newValue);
-  WIIDBGLOG("Current 0x%X", readAudioReg32(kWiiAudioIntRegVolume));
-
-  return kIOReturnUnsupported;
-}
-
-//
-// Handles Latte control changes.
-//
-IOReturn WiiAudioDevice::handleLatteControlChange(IOAudioControl *audioControl, SInt32 oldValue, SInt32 newValue) {
-  WIIDBGLOG("Channel: %u, old: %d, new: %d", audioControl->getChannelID(), oldValue, newValue);
-  WIIDBGLOG("Current 0x%X", readAudioReg32(kWiiAudioIntRegVolume));
-
-  return kIOReturnUnsupported;
 }
 
 //
@@ -145,8 +123,7 @@ UInt32 WiiAudioDevice::dspGetBytesLeft(bool latte) {
 //
 // Creates an audio engine.
 //
-WiiAudioEngine *WiiAudioDevice::createAudioEngine(void *buffer, IOByteCount bufferLength, const char *description,
-                                                  IOAudioControl::IntValueChangeHandler controlHandler) {
+WiiAudioEngine *WiiAudioDevice::createAudioEngine(void *buffer, IOByteCount bufferLength, const char *description) {
   WiiAudioEngine  *audioEngine;
   IOAudioControl  *control;
 
@@ -162,35 +139,6 @@ WiiAudioEngine *WiiAudioDevice::createAudioEngine(void *buffer, IOByteCount buff
     OSSafeReleaseNULL(audioEngine);
     return NULL;
   }
-
-        // Right master output volume.
- control = IOAudioLevelControl::createVolumeControl(
-                     /* initialValue */   100,
-                     /* minValue     */   0,
-                     /* maxValue     */   100,
-                     /* minDB        */   0,
-                     /* maxDB        */   100,
-                     /* channelID    */   kIOAudioControlChannelIDAll,
-                     /* channelName  */   kIOAudioControlChannelNameAll,
-                     /* cntrlID      */   0, 
-                     /* usage        */   kIOAudioControlUsageOutput );
-
-
-      audioEngine->addDefaultAudioControl( control );
-      control->release();
-
-  //
-  // Create dummy mute control, this is required for sound in Classic on 10.4.
-  // TODO: Determine cause for no sound in Classic on 10.3.
-  //
-  control = IOAudioToggleControl::createMuteControl(false, kIOAudioControlChannelIDAll, kIOAudioControlChannelNameAll, 0, kIOAudioControlUsageOutput);
-	if (control == NULL) {
-    return NULL;
-  }
-  control->setProperty(kIOAudioControlValueIsReadOnlyKey, (bool)true);
-	control->setValueChangeHandler(controlHandler, this);
-	audioEngine->addDefaultAudioControl(control);
-	control->release();
 
   return audioEngine;
 }

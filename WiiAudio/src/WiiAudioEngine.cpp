@@ -17,6 +17,8 @@ OSDefineMetaClassAndStructors(WiiAudioEngine, super);
 // Initializes the class.
 //
 bool WiiAudioEngine::init(WiiAudioDevice *device, void *buffer, IOByteCount bufferLength, const char *description) {
+  IOReturn status;
+
   WiiCheckDebugArgs();
 
   if (!super::init(NULL)) {
@@ -27,6 +29,15 @@ bool WiiAudioEngine::init(WiiAudioDevice *device, void *buffer, IOByteCount buff
   _sampleBuffer       = buffer;
   _sampleBufferLength = bufferLength;
   _deviceDescription  = description;
+  _currentVolume 			= kWiiMaxVolume;
+  _currentMute   			= 0;
+
+	createVolumeLogTable();
+
+  status = createControls();
+  if (status != kIOReturnSuccess) {
+    return false;
+  }
 
   return true;
 }
