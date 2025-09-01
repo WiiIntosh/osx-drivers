@@ -137,7 +137,7 @@ WiiOHCITransferBuffer *WiiOHCITransferBuffer::transferBuffer(bool isochronous) {
   }
 
   transferBuffer->_buffer->prepare();
-  transferBuffer->_physicalAddr        = transferBuffer->_buffer->getPhysicalSegment(0, &length);
+  transferBuffer->_physicalAddr = transferBuffer->_buffer->getPhysicalSegment(0, &length);
   if (isochronous) {
     transferBuffer->_isoTDs = (OHCIIsoTransferDescriptor *) transferBuffer->_buffer->getBytesNoCopy();
     IOSetProcessorCacheMode(kernel_task, (IOVirtualAddress) transferBuffer->_isoTDs, PAGE_SIZE, kIOInhibitCache);
@@ -190,7 +190,7 @@ IOPhysicalAddress WiiOHCITransferBuffer::getPhysAddr(void) {
 // Gets a transfer at the specified index.
 //
 OHCITransferData *WiiOHCITransferBuffer::getTransfer(UInt32 index) {
-  if (index >= kWiiOHCIGenTransfersPerBuffer) {
+  if (index >= (_isochronous ? kWiiOHCIIsoTransfersPerBuffer : kWiiOHCIGenTransfersPerBuffer)) {
     return NULL;
   }
   return &_transfers[index];

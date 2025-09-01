@@ -158,27 +158,28 @@ OHCIEndpointData *WiiOHCI::getFreeEndpoint(bool isochronous) {
 OHCITransferData *WiiOHCI::getFreeTransfer(OHCIEndpointData *endpoint) {
   OHCITransferData *transfer;
 
+  //
+  // Allocate more transfers if required, then adjust linkage of remaining free transfers.
+  //
   if (endpoint->isochronous) {
     if (_freeIsoTransferHeadPtr == NULL) {
       if (allocateFreeTransfers(true) != kIOReturnSuccess) {
         return NULL;
       }
     }
-    transfer = _freeIsoTransferHeadPtr;
+
+    transfer                = _freeIsoTransferHeadPtr;
+    _freeIsoTransferHeadPtr = transfer->nextTransfer;
   } else {
     if (_freeGenTransferHeadPtr == NULL) {
       if (allocateFreeTransfers(false) != kIOReturnSuccess) {
         return NULL;
       }
     }
-    transfer = _freeGenTransferHeadPtr;
+
+    transfer                = _freeGenTransferHeadPtr;
+    _freeGenTransferHeadPtr = transfer->nextTransfer;
   }
-
-
-  //
-  // Adjust linkage for remaining free general transfers.
-  //
-  _freeGenTransferHeadPtr = transfer->nextTransfer;
   transfer->nextTransfer  = NULL;
 
   if (endpoint->isochronous) {
@@ -186,7 +187,7 @@ OHCITransferData *WiiOHCI::getFreeTransfer(OHCIEndpointData *endpoint) {
   } else {
     transfer->genTD->nextTDPhysAddr = 0;
   }
-  transfer->nextTransfer       = NULL;
+
   transfer->bounceBuffer       = NULL;
   transfer->endpoint           = endpoint;
 
@@ -325,7 +326,7 @@ IOReturn WiiOHCI::initIsoEndpoints(void) {
   //
   // Controller is to skip the tail endpoint, with this endpoint being the end of the list.
   //
-  _isoEndpointTailPtr->ed->flags          = HostToUSBLong(kOHCIEDFlagsSkip);
+  _isoEndpointTailPtr->ed->flags          = HostToUSBLong(kOHCIEDFlagsIsochronous | kOHCIEDFlagsSkip);
   _isoEndpointTailPtr->ed->nextEDPhysAddr = HostToUSBLong(0);
   _isoEndpointTailPtr->nextEndpoint       = NULL;
 
@@ -340,7 +341,7 @@ IOReturn WiiOHCI::initIsoEndpoints(void) {
   //
   // Controller is to skip the head endpoint, points to the tail endpoint.
   //
-  _isoEndpointHeadPtr->ed->flags          = HostToUSBLong(kOHCIEDFlagsSkip);
+  _isoEndpointHeadPtr->ed->flags          = HostToUSBLong(kOHCIEDFlagsIsochronous | kOHCIEDFlagsSkip);
   _isoEndpointHeadPtr->ed->nextEDPhysAddr = HostToUSBLong(_isoEndpointTailPtr->physAddr);
   _isoEndpointHeadPtr->nextEndpoint       = _isoEndpointTailPtr;
 
