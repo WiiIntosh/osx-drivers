@@ -581,7 +581,7 @@ IOReturn WiiOHCI::UIMCreateIsochTransfer(short functionAddress, short endpointNu
                                          UInt64 frameStart, IOMemoryDescriptor *pBuffer, UInt32 frameCount, IOUSBIsocFrame *pFrames) {
   WIISYSLOG("F: %d, EP: %u, dir: %d, frm: %llu, fc: %u", functionAddress, endpointNumber, direction, frameStart, frameCount);
   return doIsochTransfer(functionAddress, endpointNumber, completion, direction, frameStart, pBuffer,
-    frameCount, (void *) pBuffer, 0, false);
+    frameCount, (void *) pFrames, 0, false);
 }
 
 //
