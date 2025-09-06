@@ -13,6 +13,7 @@
 
 // 64 supported interrupts on Latte.
 #define kWiiLatteIntVectorCount         64
+#define kWiiLatteIntVectorPerRegCount   32
 
 // PowerPC interrupt registers (cores 0 - 2).
 #define kWiiLatteIntPPCRegistersLength          (4 * 4)
