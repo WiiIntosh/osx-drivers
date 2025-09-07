@@ -43,6 +43,10 @@ OHCITransferData *WiiOHCI::getTransferFromPhys(IOPhysicalAddress physAddr) {
   WiiOHCITransferBuffer *transferBuffer;
   OHCITransferData      *transferData;
 
+  if (physAddr == 0) {
+    return NULL;
+  }
+
   //
   // Search transfer buffers for matching physical address.
   //
