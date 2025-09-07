@@ -146,14 +146,6 @@ IOReturn LatteInterruptController::handleInterrupt(void *refCon, IOService *nub,
   cause &= mask;
 
   //
-  // Acknowledge all asserted interrupts on the controller. Any interrupts will be re-asserted if the
-  // respective handlers do not clear the underlying hardware interrupts.
-  //
-  writeReg32(kWiiLatteIntRegPPCInterruptCause0, (UInt32)cause);
-  writeReg32(kWiiLatteIntRegPPCInterruptCause1, (UInt32)(cause >> kWiiLatteIntVectorPerRegCount));
-  eieio();
-
-  //
   // Check all vectors.
   //
   for (int vectorIndex = 0; vectorIndex < kWiiLatteIntVectorCount; vectorIndex++) {
@@ -187,6 +179,14 @@ IOReturn LatteInterruptController::handleInterrupt(void *refCon, IOService *nub,
     vector->interruptActive = 0;
   }
 
+  //
+  // Acknowledge all asserted interrupts on the controller. Any interrupts will be re-asserted if the
+  // respective handlers did not clear the underlying hardware interrupts.
+  //
+  writeReg32(kWiiLatteIntRegPPCInterruptCause0, (UInt32)cause);
+  writeReg32(kWiiLatteIntRegPPCInterruptCause1, (UInt32)(cause >> kWiiLatteIntVectorPerRegCount));
+  eieio();
+
   return kIOReturnSuccess;
 }
 
@@ -218,6 +218,7 @@ void LatteInterruptController::disableVectorHard(IOInterruptVectorNumber vectorN
     mask &= ~(1 << (vectorNumber - kWiiLatteIntVectorPerRegCount));
     writeReg32(kWiiLatteIntRegPPCInterruptMask1, mask);
   }
+  eieio();
 }
 
 //
