@@ -8,41 +8,78 @@
 #include "WiiOHCI.hpp"
 
 //
-// Handles interrupts.
+// Interrupt handler filter function.
 //
-void WiiOHCI::handleInterrupt(IOInterruptEventSource *intEventSource, int count) {
-  UInt32  intStatus;
-  UInt32  intEnable;
-  UInt32  hccaPhysDone;
-
-  intStatus = readReg32(kOHCIRegIntStatus);
+// This function runs in the primary interrupt handler context and should be as simple as possible.
+// This may run concurrently with the secondary handler and any workloop functions.
+//
+bool WiiOHCI::filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource) {
+  UInt32            intEnable;
+  UInt32            intStatus;
+  IOPhysicalAddress newWriteDoneHeadPhysAddr;
+  AbsoluteTime      timeStamp;
+  UInt32            numTDs;
+  UInt16            hcFrameNumber;
+  OHCITransferData  *prevTransfer;
+  OHCITransferData  *currTransfer;
+  OHCITransferData  *nextTransfer;
+  bool              signalSecondaryInt;
+  
   intEnable = readReg32(kOHCIRegIntEnable);
-
-  WIIDBGLOG("interrupt: 0x%X, mask: 0x%X", intStatus, intEnable);
+  intStatus = intEnable & readReg32(kOHCIRegIntStatus);
 
   //
-  // Only handle interrupts if they are enabled, and if it was one that was enabled.
+  // Only handle interrupts if they are enabled, and if it was one that was enabled. TODO: Handle the error ones.
   //
-  intStatus &= intEnable;
   if (((intEnable & kOHCIRegIntEnableMasterInterruptEnable) == 0) || (intStatus == 0)) {
-    return;
+    return false;
   }
-
-  if (intStatus & (kOHCIRegIntEnableSchedulingOverrun | kOHCIRegIntEnableResumeDetected | kOHCIRegIntEnableUnrecoverableError)) {
-    WIIDBGLOG("Got a weird one here\n");
-  }
+  signalSecondaryInt = false;
 
   //
-  // Queue completed.
+  // Done queue head written.
   //
   if (intStatus & kOHCIRegIntStatusWritebackDoneHead) {
+    clock_get_uptime(&timeStamp);
+
     //
-    // Get the queue head from HCCA.
+    // Get the queue head from HCCA and notify controller its been taken.
     //
-    hccaPhysDone = USBToHostLong(_hccaPtr->doneHeadPhysAddr) & kOHCIRegDoneHeadMask;
+    newWriteDoneHeadPhysAddr = USBToHostLong(_hccaPtr->doneHeadPhysAddr) & kOHCIRegDoneHeadMask;
     _hccaPtr->doneHeadPhysAddr = 0;
     writeReg32(kOHCIRegIntStatus, kOHCIRegIntStatusWritebackDoneHead);
-    completeTransferQueue(hccaPhysDone);
+    OSSynchronizeIO();
+
+    //
+    // Find end of the queue chain.
+    //
+    numTDs       = 0;
+    prevTransfer = NULL;
+    currTransfer = getTransferFromPhys(newWriteDoneHeadPhysAddr);
+    nextTransfer = NULL;
+    while (currTransfer != NULL) {
+      nextTransfer = getTransferFromPhys(USBToHostLong(currTransfer->genTD->nextTDPhysAddr));
+
+      numTDs++;
+      prevTransfer = currTransfer;
+      currTransfer = nextTransfer;
+    }
+
+    //
+    // Link the existing head of the completed chain to this new one.
+    //
+    IOSimpleLockLock(_writeDoneHeadLock);
+    
+    if (prevTransfer != NULL) {
+      prevTransfer->genTD->nextTDPhysAddr = HostToUSBLong(_writeDoneHeadPhysAddr);
+    }
+    _writeDoneHeadPhysAddr       = newWriteDoneHeadPhysAddr;
+    _writeDoneHeadProducerCount += numTDs;
+
+    IOSimpleLockUnlock(_writeDoneHeadLock);
+
+    _writeDoneHeadChanged = true;
+    signalSecondaryInt    = true;
   }
 
   //
@@ -53,13 +90,64 @@ void WiiOHCI::handleInterrupt(IOInterruptEventSource *intEventSource, int count)
       _frameNumber += BIT16;
     }
     writeReg32(kOHCIRegIntStatus, kOHCIRegIntEnableFrameNumberOverflow);
+    OSSynchronizeIO();
   }
 
   //
   // Root hub status change.
   //
   if (intStatus & kOHCIRegIntStatusRootHubStatusChange) {
+    writeReg32(kOHCIRegIntDisable, kOHCIRegIntDisableRootHubStatusChange);
     writeReg32(kOHCIRegIntStatus, kOHCIRegIntStatusRootHubStatusChange);
+    OSSynchronizeIO();
+
+    _rootHubStatusChanged = true;
+    signalSecondaryInt    = true;
+  }
+
+  //
+  // Signal the secondary handler manually so the primary is never disabled.
+  // Need to keep it moving for various low latency operations.
+  //
+  if (signalSecondaryInt) {
+    _interruptEventSource->signalInterrupt();
+  }
+  return false;
+}
+
+//
+// Handles interrupts.
+//
+// This function is gated and called within the workloop context.
+//
+void WiiOHCI::handleInterrupt(IOInterruptEventSource *intEventSource, int count) {
+  IOInterruptState  intState;
+  UInt32            newWriteHeadDoneProducerCount;
+  IOPhysicalAddress newWriteHeadDonePhysAddr;
+
+  WIIDBGLOG("Interrupt: WH: %u, RH: %u", _writeDoneHeadChanged, _rootHubStatusChanged);
+
+  //
+  // Done queue head written.
+  //
+  if (_writeDoneHeadChanged) {
+    _writeDoneHeadChanged = false;
+
+    intState = IOSimpleLockLockDisableInterrupt(_writeDoneHeadLock);
+
+    newWriteHeadDonePhysAddr      = _writeDoneHeadPhysAddr;
+    newWriteHeadDoneProducerCount = _writeDoneHeadProducerCount;
+
+    IOSimpleLockUnlockEnableInterrupt(_writeDoneHeadLock, intState);
+
+    completeTransferQueue(newWriteHeadDonePhysAddr, newWriteHeadDoneProducerCount);
+  }
+
+  //
+  // Root hub status change.
+  //
+  if (_rootHubStatusChanged) {
+    _rootHubStatusChanged = false;
     completeRootHubInterruptTransfer(false);
   }
 }

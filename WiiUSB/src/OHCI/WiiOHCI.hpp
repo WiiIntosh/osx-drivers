@@ -9,8 +9,8 @@
 #define WiiOHCI_hpp
 
 #include <IOKit/IOBufferMemoryDescriptor.h>
+#include <IOKit/IOFilterInterruptEventSource.h>
 #include <IOKit/IOMemoryCursor.h>
-#include <IOKit/IOInterruptEventSource.h>
 #include <IOKit/IORangeAllocator.h>
 #include <IOKit/usb/IOUSBController.h>
 
@@ -121,8 +121,19 @@ private:
   IOMemoryMap             *_memoryMap;
   volatile void           *_baseAddr;
   IORangeAllocator        *_mem2Allocator;
-  IOInterruptEventSource  *_interruptEventSource;
   IONaturalMemoryCursor   *_memoryCursor;
+
+  //
+  // Interrupts.
+  //
+  IOFilterInterruptEventSource  *_interruptEventSource;
+  IOTimerEventSource            *_isochTimerEventSource;
+  IOSimpleLock                  *_writeDoneHeadLock;
+  volatile IOPhysicalAddress    _writeDoneHeadPhysAddr;
+  volatile UInt32               _writeDoneHeadProducerCount;
+  volatile UInt32               _writeDoneHeadConsumerCount;
+  volatile bool                 _writeDoneHeadChanged;
+  volatile bool                 _rootHubStatusChanged;
 
   // _invalidate_dcache pointer. This function is not exported on 10.4
   WiiInvalidateDataCacheFunc  _invalidateCacheFunc;
@@ -192,6 +203,10 @@ private:
     return writeReg32(kOHCIRegRhPortStatusBase + ((port - 1) * sizeof (UInt32)), data);
   }
 
+  //
+  // Interrupt functions.
+  //
+  bool filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource);
   void handleInterrupt(IOInterruptEventSource *intEventSource, int count);
 
   IOReturn simulateRootHubControlEDCreate(UInt8 endpointNumber, UInt16 maxPacketSize, UInt8 speed);
@@ -240,10 +255,14 @@ private:
   //
   IOReturn doGeneralTransfer(OHCIEndpointData *endpoint, IOUSBCompletion completion,
                              IOMemoryDescriptor *buffer, UInt32 bufferSize, UInt32 flags, UInt32 cmdBits);
+  IOReturn prepareIsochTransfer(OHCITransferData *transfer, IOMemoryDescriptor *buffer, UInt32 offset, UInt32 transferSize,
+                                UInt16 numPackets, UInt32 flags);
   IOReturn doIsochTransfer(short functionAddress, short endpointNumber, IOUSBIsocCompletion completion, UInt8 direction,
-                           UInt64 frameStart, IOMemoryDescriptor *pBuffer, UInt32 frameCount, void *pFrames,
+                           UInt64 frameStart, IOMemoryDescriptor *pBuffer, UInt32 frameCount, IOUSBIsocFrame *pFrames,
                            UInt32 updateFrequency, bool isLowLatency);
-  void completeTransferQueue(UInt32 headPhysAddr);
+  void completeGeneralTransfer(OHCITransferData *transfer);
+  void completeIsochTransfer(OHCITransferData *transfer, IOReturn status);
+  void completeTransferQueue(IOPhysicalAddress headPhysAddr, UInt32 producerCount);
 
 protected:
   //

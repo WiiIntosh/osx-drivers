@@ -693,8 +693,22 @@ void WiiOHCI::removeEndpointTransfers(OHCIEndpointData *endpoint) {
   //
   bufferSizeRemaining = 0;
   if (endpoint->isochronous) {
-    // TODO
-    return;
+    while (transferCurr != endpoint->transferTail) {
+      if (transferCurr == NULL) {
+        // Shouldn't occur.
+        WIISYSLOG("Got an invalid TD here");
+        return;
+      }
+
+      WIIDBGLOG("Unlinking IsoTD phys 0x%X, next 0x%X, buf %p", transferCurr->physAddr,
+        USBToHostLong(transferCurr->isoTD->nextTDPhysAddr), transferCurr->srcBuffer);
+
+      completeIsochTransfer(transferCurr, kIOReturnAborted);
+
+      transferNext = getTransferFromPhys(USBToHostLong(transferCurr->isoTD->nextTDPhysAddr));
+      returnTransfer(transferCurr);
+      transferCurr = transferNext;
+    }
   } else {
     while (transferCurr != endpoint->transferTail) {
       if (transferCurr == NULL) {

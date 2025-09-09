@@ -20,6 +20,10 @@ bool WiiOHCI::init(OSDictionary *dictionary) {
   _mem2Allocator          = NULL;
   _baseAddr               = NULL;
   _interruptEventSource   = NULL;
+
+  _writeDoneHeadChanged   = false;
+  _rootHubStatusChanged   = false;
+
   _invalidateCacheFunc    = NULL;
 
   _endpointBufferHeadPtr  = NULL;
@@ -32,6 +36,11 @@ bool WiiOHCI::init(OSDictionary *dictionary) {
   _freeIsoTransferHeadPtr       = NULL;
 
   _frameNumber  = 0;
+
+  _writeDoneHeadLock = IOSimpleLockAlloc();
+  if (_writeDoneHeadLock == NULL) {
+    return false;
+  }
 
   _rootHubInterruptTransLock = IOLockAlloc();
   if (_rootHubInterruptTransLock == NULL) {
@@ -123,8 +132,9 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
   //
   // Create interrupt.
   //
-  _interruptEventSource = IOInterruptEventSource::interruptEventSource(this,
-    OSMemberFunctionCast(IOInterruptEventSource::Action, this, &WiiOHCI::handleInterrupt),
+  _interruptEventSource = IOFilterInterruptEventSource::filterInterruptEventSource(this,
+    OSMemberFunctionCast(IOFilterInterruptEventSource::Action, this, &WiiOHCI::handleInterrupt),
+    OSMemberFunctionCast(IOFilterInterruptEventSource::Filter, this, &WiiOHCI::filterInterrupt),
     provider, 0);
   if (_interruptEventSource == NULL) {
     WIISYSLOG("Failed to create interrupt");
