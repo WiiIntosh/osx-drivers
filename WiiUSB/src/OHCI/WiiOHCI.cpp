@@ -271,6 +271,23 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
   }
 
   //
+  // Configure isochronous bounce buffer refresh timer.
+  // Timer is on its own workloop to avoid any delays.
+  //
+  _isoTimerWorkLoop = IOWorkLoop::workLoop();
+  if (_isoTimerWorkLoop == NULL) {
+    return kIOReturnNoMemory;
+  }
+
+  _isoTimerEventSource = IOTimerEventSource::timerEventSource(this,
+    OSMemberFunctionCast(IOTimerEventSource::Action, this, &WiiOHCI::handleIsoTimer));
+  if (_isoTimerEventSource == NULL) {
+    return kIOReturnNoMemory;
+  }
+  _isoTimerWorkLoop->addEventSource(_isoTimerEventSource);
+  _isoTimerEventSource->disable();
+
+  //
   // Disable all interrupts.
   //
   writeReg32(kOHCIRegIntDisable, -1);

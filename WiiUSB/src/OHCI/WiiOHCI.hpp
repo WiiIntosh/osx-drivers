@@ -12,6 +12,7 @@
 #include <IOKit/IOFilterInterruptEventSource.h>
 #include <IOKit/IOMemoryCursor.h>
 #include <IOKit/IORangeAllocator.h>
+#include <IOKit/IOTimerEventSource.h>
 #include <IOKit/usb/IOUSBController.h>
 
 #include "WiiCommon.hpp"
@@ -23,6 +24,8 @@
 // Located in any memory.
 #define kWiiOHCIBounceBufferJumboSize         0x800
 #define kWiiOHCIBounceBufferJumboInitialCount 64
+// Refresh rate for isochronous transfer buffers.
+#define kWiiOHCIIsoTimerRefreshUS             500
 
 //
 // Total interrupt nodes in tree.
@@ -127,7 +130,8 @@ private:
   // Interrupts.
   //
   IOFilterInterruptEventSource  *_interruptEventSource;
-  IOTimerEventSource            *_isochTimerEventSource;
+  IOWorkLoop                    *_isoTimerWorkLoop;
+  IOTimerEventSource            *_isoTimerEventSource;
   IOSimpleLock                  *_writeDoneHeadLock;
   volatile IOPhysicalAddress    _writeDoneHeadPhysAddr;
   volatile UInt32               _writeDoneHeadProducerCount;
@@ -208,6 +212,7 @@ private:
   //
   bool filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource);
   void handleInterrupt(IOInterruptEventSource *intEventSource, int count);
+  void handleIsoTimer(IOTimerEventSource *sender);
 
   IOReturn simulateRootHubControlEDCreate(UInt8 endpointNumber, UInt16 maxPacketSize, UInt8 speed);
   IOReturn simulateRootHubInterruptEDCreate(short endpointNumber, UInt8 direction, short speed, UInt16 maxPacketSize);

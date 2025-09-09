@@ -153,6 +153,55 @@ void WiiOHCI::handleInterrupt(IOInterruptEventSource *intEventSource, int count)
 }
 
 //
+// Handles isochronous timer events.
+//
+// This function is not called within the regular workloop context.
+// The timer is stopped/started when the endpoint list has items removed.
+//
+void WiiOHCI::handleIsoTimer(IOTimerEventSource *sender) {
+  UInt16            hcFrameNumber;
+  OHCIEndpointData  *currEndpoint;
+  OHCITransferData  *currTransfer;
+
+  //
+  // Iterate through each isochronous endpoint and check for transfer descriptors that are about to be sent.
+  //
+  currEndpoint = _isoEndpointHeadPtr;
+  while (currEndpoint != _isoEndpointTailPtr) {
+    currTransfer = getTransferFromPhys(USBToHostLong(currEndpoint->ed->headTDPhysAddr) & kOHCIEDTDHeadMask);
+    if (currTransfer == NULL) {
+      currEndpoint = currEndpoint->nextEndpoint;
+      continue;
+    }
+
+    //
+    // Iterate through each transfer descriptor.
+    //
+    while (currTransfer != currEndpoint->transferTail) {
+      //
+      // Check if transfer hasn't already been copied, and is going to be transferred shortly if outbound.
+      //
+      hcFrameNumber = USBToHostWord(_hccaPtr->frameNumber);
+      if (!currTransfer->isoBufferCopied && (currTransfer->isoFrameStart > hcFrameNumber)) {
+        if ((currTransfer->isoFrameStart - hcFrameNumber) < 3) {
+          if (currTransfer->srcBuffer != NULL) {
+            currTransfer->srcBuffer->readBytes(0, currTransfer->bounceBuffer->buf, currTransfer->actualBufferSize);
+            flushDataCache(currTransfer->bounceBuffer->buf, currTransfer->actualBufferSize);
+          }
+          currTransfer->isoBufferCopied = true;
+        }
+      }
+
+      currTransfer = currTransfer->nextTransfer;
+    }
+
+    currEndpoint = currEndpoint->nextEndpoint;
+  }
+
+  _isoTimerEventSource->setTimeoutUS(kWiiOHCIIsoTimerRefreshUS);
+}
+
+//
 // Overrides IOUSBController::PollInterrupts().
 //
 void WiiOHCI::PollInterrupts(IOUSBCompletionAction safeAction) {

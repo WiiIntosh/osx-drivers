@@ -971,6 +971,7 @@ IOReturn WiiOHCI::UIMCreateIsochEndpoint(short functionAddress, short endpointNu
   UInt32            endpointFlags;
   UInt32            currMaxPacketSize;
   UInt32            diffMaxPacketSize;
+  bool              firstEndpoint;
   IOReturn          status;
 
   WIIDBGLOG("F: %d, EP: %u, dir: %d, sz: %u", functionAddress, endpointNumber, direction, maxPacketSize);
@@ -1022,6 +1023,7 @@ IOReturn WiiOHCI::UIMCreateIsochEndpoint(short functionAddress, short endpointNu
     WIIDBGLOG("No remaining iso bandwidth for sz: %u, available: %u", maxPacketSize, _isoBandwidthAvailable);
     return kIOReturnNoBandwidth;
   }
+  firstEndpoint = (_isoEndpointHeadPtr->nextEndpoint == _isoEndpointTailPtr);
 
   //
   // Add new isochronous endpoint.
@@ -1030,6 +1032,14 @@ IOReturn WiiOHCI::UIMCreateIsochEndpoint(short functionAddress, short endpointNu
     direction, _isoEndpointHeadPtr, true);
   if (status != kIOReturnSuccess) {
     return status;
+  }
+
+  //
+  // Startup the isochronous refresh timer if this is the first endpoint.
+  //
+  if (firstEndpoint) {
+    _isoTimerEventSource->enable();
+    _isoTimerEventSource->setTimeoutUS(kWiiOHCIIsoTimerRefreshUS);
   }
 
   _isoBandwidthAvailable -= maxPacketSize;
@@ -1047,9 +1057,9 @@ IOReturn WiiOHCI::UIMCreateIsochEndpoint(short functionAddress, short endpointNu
 //
 IOReturn WiiOHCI::UIMCreateIsochTransfer(short functionAddress, short endpointNumber, IOUSBIsocCompletion completion, UInt8 direction,
                                          UInt64 frameStart, IOMemoryDescriptor *pBuffer, UInt32 frameCount, IOUSBIsocFrame *pFrames) {
-  WIISYSLOG("F: %d, EP: %u, dir: %d, frm: %llu, fc: %u", functionAddress, endpointNumber, direction, frameStart, frameCount);
+  WIIDBGLOG("F: %d, EP: %u, dir: %d, frm: %llu, fc: %u", functionAddress, endpointNumber, direction, frameStart, frameCount);
   return doIsochTransfer(functionAddress, endpointNumber, completion, direction, frameStart, pBuffer,
-    frameCount, (void *) pFrames, 0, false);
+    frameCount, pFrames, 0, false);
 }
 
 //
@@ -1080,10 +1090,7 @@ IOReturn WiiOHCI::UIMAbortEndpoint(short functionNumber, short endpointNumber, s
   // Mark endpoint as skipped and wait until next frame.
   //
   endpoint->ed->flags |= HostToUSBLong(kOHCIEDFlagsSkip);
-  writeReg32(kOHCIRegIntStatus, kOHCIRegIntStatusStartOfFrame);
-  while ((readReg32(kOHCIRegIntStatus) & kOHCIRegIntStatusStartOfFrame) == 0) {
-    IODelay(10);
-  }
+  IOSleep(2);
 
   //
   // Remove all transfers associated with endpoint and re-activate the endpoint.
@@ -1143,22 +1150,19 @@ IOReturn WiiOHCI::UIMDeleteEndpoint(short functionNumber, short endpointNumber, 
   }
 
   //
-  // Mark endpoint as skipped and wait until next frame.
+  // Mark endpoint as skipped.
   //
   endpoint->ed->flags |= HostToUSBLong(kOHCIEDFlagsSkip);
-  writeReg32(kOHCIRegIntStatus, kOHCIRegIntStatusStartOfFrame);
-  while ((readReg32(kOHCIRegIntStatus) & kOHCIRegIntStatusStartOfFrame) == 0) {
-    IODelay(10);
-  }
 
   //
   // Stop processing of endpoints.
   //
   writeReg32(kOHCIRegControl, readReg32(kOHCIRegControl) & ~(listMask));
-  writeReg32(kOHCIRegIntStatus, kOHCIRegIntStatusStartOfFrame);
-  while ((readReg32(kOHCIRegIntStatus) & kOHCIRegIntStatusStartOfFrame) == 0) {
-    IODelay(10);
+  if (endpoint->isochronous) {
+    _isoTimerEventSource->cancelTimeout();
+    _isoTimerEventSource->disable();
   }
+  IOSleep(2);
 
   //
   // Remove endpoint from linked list and resume endpoint processing.
@@ -1166,6 +1170,10 @@ IOReturn WiiOHCI::UIMDeleteEndpoint(short functionNumber, short endpointNumber, 
   prevEndpoint->nextEndpoint       = endpoint->nextEndpoint;
   prevEndpoint->ed->nextEDPhysAddr = endpoint->ed->nextEDPhysAddr;
   writeReg32(kOHCIRegControl, readReg32(kOHCIRegControl) | listMask);
+  if (endpoint->isochronous) {
+    _isoTimerEventSource->enable();
+    _isoTimerEventSource->setTimeoutUS(kWiiOHCIIsoTimerRefreshUS);
+  }
   WIIDBGLOG("Unlinked EP phys: 0x%X", endpoint->physAddr);
 
   //
@@ -1175,6 +1183,14 @@ IOReturn WiiOHCI::UIMDeleteEndpoint(short functionNumber, short endpointNumber, 
     maxPacketSize = (USBToHostLong(endpoint->ed->flags) & kOHCIEDFlagsMaxPktSizeMask) >> kOHCIEDFlagsMaxPktSizeShift;
     _isoBandwidthAvailable += maxPacketSize;
     WIIDBGLOG("Returned iso bandwidth: %u bytes, available: %u", maxPacketSize, _isoBandwidthAvailable);
+
+    //
+    // If there are no longer any active isochronous endpoints, stop the timer.
+    //
+    if (_isoEndpointHeadPtr->nextEndpoint == _isoEndpointTailPtr) {
+      _isoTimerEventSource->cancelTimeout();
+      _isoTimerEventSource->disable();
+    }
   }
 
   //
