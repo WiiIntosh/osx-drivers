@@ -220,7 +220,7 @@ void WiiOHCI::returnTransfer(OHCITransferData *transfer) {
     transfer->bounceBuffer = NULL;
   }
 
-  if (transfer->isochronous) {
+  if ((transfer->type == kOHCITransferTypeIsochronous) || (transfer->type == kOHCITransferTypeIsochronousLowLatency)) {
     transfer->nextTransfer  = _freeIsoTransferHeadPtr;
     _freeIsoTransferHeadPtr = transfer;
   } else {
@@ -628,7 +628,6 @@ IOReturn WiiOHCI::addNewEndpoint(UInt8 functionNumber, UInt8 endpointNumber, UIn
   //
   // Set new transfer as head and tail to indicate no active transfers.
   //
-  endpoint->transferHead       = transferTail;
   endpoint->transferTail       = transferTail;
   endpoint->ed->headTDPhysAddr = HostToUSBLong(transferTail->physAddr);
   endpoint->ed->tailTDPhysAddr = HostToUSBLong(transferTail->physAddr);
@@ -687,7 +686,6 @@ void WiiOHCI::removeEndpointTransfers(OHCIEndpointData *endpoint) {
   WIIDBGLOG("TD head phys: 0x%X, tail phys: 0x%X", USBToHostLong(endpoint->ed->headTDPhysAddr), USBToHostLong(endpoint->ed->tailTDPhysAddr));
   transferCurr = getTransferFromPhys(USBToHostLong(endpoint->ed->headTDPhysAddr) & kOHCIEDTDHeadMask);
 
-  endpoint->transferHead       = endpoint->transferTail;
   endpoint->ed->headTDPhysAddr = endpoint->ed->tailTDPhysAddr;
 
   //
@@ -705,7 +703,7 @@ void WiiOHCI::removeEndpointTransfers(OHCIEndpointData *endpoint) {
         return;
       }
 
-      WIIDBGLOG("Unlinking TD phys 0x%X, next 0x%X, buf %p", transferCurr->physAddr,
+      WIIDBGLOG("Unlinking GenTD phys 0x%X, next 0x%X, buf %p", transferCurr->physAddr,
         USBToHostLong(transferCurr->genTD->nextTDPhysAddr), transferCurr->srcBuffer);
 
       if (transferCurr->srcBuffer != NULL) {
@@ -761,7 +759,6 @@ void WiiOHCI::completeFailedEndpointGenTransfers(OHCIEndpointData *endpoint, IOR
     //
     // Unlink the transfer descriptor and get the buffer size.
     //
-    endpoint->transferHead       = transferCurr->nextTransfer;
     endpoint->ed->headTDPhysAddr = HostToUSBLong(transferCurr->nextTransfer->physAddr) | (endpoint->ed->headTDPhysAddr & ~(HostToUSBLong(kOHCIEDTDHeadMask)));
     bufferSizeRemaining += getGenTransferBufferRemaining(transferCurr);
 

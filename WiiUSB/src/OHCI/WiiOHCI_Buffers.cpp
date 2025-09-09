@@ -150,8 +150,8 @@ WiiOHCITransferBuffer *WiiOHCITransferBuffer::transferBuffer(bool isochronous) {
   // Configure transfer data.
   //
   for (UInt32 i = 0; i < (isochronous ? kWiiOHCIIsoTransfersPerBuffer : kWiiOHCIGenTransfersPerBuffer); i++) {
-    transferBuffer->_transfers[i].isochronous = isochronous;
-    if (transferBuffer->_transfers[i].isochronous) {
+    transferBuffer->_transfers[i].type = isochronous ? kOHCITransferTypeIsochronous : kOHCITransferTypeGeneral;
+    if (isochronous) {
       transferBuffer->_transfers[i].isoTD    = &transferBuffer->_isoTDs[i];
       transferBuffer->_transfers[i].physAddr = transferBuffer->_physicalAddr + (i * sizeof (transferBuffer->_isoTDs[0]));
     } else {

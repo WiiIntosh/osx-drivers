@@ -213,8 +213,6 @@ typedef struct OHCIEndpointData {
   UInt32                  physAddr;
   // Isochronous endpoint?
   bool                    isochronous;
-  // Pointer to the head of the transfer data linked list.
-  struct OHCITransferData *transferHead;
   // Pointer to the tail of the transfer data linked list.
   struct OHCITransferData *transferTail;
   // Pointer to the next endpoint.
@@ -263,6 +261,7 @@ typedef struct {
 #define kOHCITDConditionCodeDataUnderrun          9
 #define kOHCITDConditionCodeBufferOverrun         12
 #define kOHCITDConditionCodeBufferUnderrun        13
+#define kOHCITDConditionCodeNotAccessedPSW        7
 #define kOHCITDConditionCodeNotAccessed           15
 
 //
@@ -282,6 +281,27 @@ typedef struct {
 #define kOHCIGenTDFlagsErrorCountMask         BITRange(26, 27)
 #define kOHCIGenTDFlagsConditionCodeShift     28
 #define kOHCIGenTDFlagsConditionCodeMask      BITRange(28, 31)
+
+//
+// OHCI isochronous transfer descriptor flags.
+//
+#define kOHCIIsoTDFlagsStartingFrameMask      BITRange(0, 15)
+#define kOHCIIsoTDFlagsDelayInterruptShift    21
+#define kOHCIIsoTDFlagsDelayInterruptMask     BITRange(21, 23)
+#define kOHCIIsoTDFlagsDelayInterruptNone     kOHCIIsoTDFlagsDelayInterruptMask
+#define kOHCIIsoTDFlagsFrameCountShift        24
+#define kOHCIIsoTDFlagsFrameCountMask         BITRange(24, 26)
+#define kOHCIIsoTDFlagsConditionCodeShift     28
+#define kOHCIIsoTDFlagsConditionCodeMask      BITRange(28, 31)
+
+#define kOHCIIsoTDPktOffsetMask               BITRange(0, 11)
+#define kOHCIIsoTDPktOffsetPageSelect         BIT12
+#define kOHCIIsoTDPktOffsetConditionCodeShift 13
+#define kOHCIIsoTDPktOffsetConditionCodeMask  BITRange(13, 15)
+
+#define kOHCIIsoTDPktStatusSizeMask           BITRange(0, 10)
+#define kOHCIIsoTDPktStatusConditionCodeShift 12
+#define kOHCIIsoTDPktStatusConditionCodeMask  BITRange(12, 15)
 
 //
 // OHCI general (control, int, bulk) transfer descriptor.
@@ -312,14 +332,14 @@ OSCompileAssert(sizeof (OHCIGenTransferDescriptor) == kOHCIGenTransferDescriptor
 typedef struct {
   // Transfer descriptor flags.
   volatile UInt32 flags;
-  // Buffer page 0.
-  volatile UInt32 bufferPage0;
+  // Physical page number of the data buffer.
+  volatile UInt32 bufferPhysPage;
   // Physical address of next transfer descriptor.
   volatile UInt32 nextTDPhysAddr;
   // Physical address of the last byte in this transfer descriptor's buffer.
   volatile UInt32 bufferEndPhysAddr;
-  // Packet status words.
-  volatile UInt16 packetStatus[8];
+  // Offset into buffer page for each packet, or status for each packet.
+  volatile UInt16 packetOffsetStatus[8];
 } OHCIIsoTransferDescriptor;
 OSCompileAssert(sizeof (OHCIIsoTransferDescriptor) == kOHCIIsoTransferDescriptorAlignment);
 
@@ -343,6 +363,15 @@ typedef struct OHCIBounceBuffer {
 } OHCIBounceBuffer;
 
 //
+// OHCI transfer data type.
+//
+typedef enum {
+  kOHCITransferTypeGeneral = 0,
+  kOHCITransferTypeIsochronous,
+  kOHCITransferTypeIsochronousLowLatency
+};
+
+//
 // OHCI transfer data (general and isochronous).
 //
 typedef struct OHCITransferData {
@@ -352,8 +381,10 @@ typedef struct OHCITransferData {
     OHCIIsoTransferDescriptor *isoTD;
   };
 
-  // Isochronous transfer?
-  bool                    isochronous;
+  // Transfer type.
+  UInt8                   type;
+  // Transfer direction.
+  UInt8                   direction;
   // Physical address of the transfer descriptor.
   UInt32                  physAddr;
   // Pointer to next linked transfer.
@@ -376,10 +407,18 @@ typedef struct OHCITransferData {
     IOUSBIsocCompletion isoCompletion;
   };
 
-  // Isochronous frame.
-  IOUSBIsocFrame  *isoFrame;
-  // Isochronous frame number.
-  UInt32          isoFrameNum;
+  // Isochronous frames.
+  union {
+    IOUSBIsocFrame            *isoFrames;
+    IOUSBLowLatencyIsocFrame  *isoLowFrames;
+  };
+
+  // Scheduled starting frame.
+  UInt16          isoFrameStart;
+  // Isochronous frame index.
+  UInt32          isoFrameIndex;
+  // Source buffer was copied to/from bounce buffer.
+  bool            isoBufferCopied;
 } OHCIGenTransferData;
 
 #endif
