@@ -21,8 +21,10 @@ bool WiiOHCI::init(OSDictionary *dictionary) {
   _baseAddr               = NULL;
   _interruptEventSource   = NULL;
 
-  _writeDoneHeadChanged   = false;
-  _rootHubStatusChanged   = false;
+  _intWriteDoneHead       = false;
+  _intResumeDetected      = false;
+  _intUnrecoverableError  = false;
+  _intRootHubStatus       = false;
 
   _invalidateCacheFunc    = NULL;
 

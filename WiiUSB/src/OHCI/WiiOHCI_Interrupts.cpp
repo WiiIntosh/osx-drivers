@@ -18,11 +18,12 @@ bool WiiOHCI::filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource
   UInt32            intStatus;
   IOPhysicalAddress newWriteDoneHeadPhysAddr;
   AbsoluteTime      timeStamp;
+  UInt16            frameCount;
+  UInt16            pktOffStatus;
   UInt32            numTDs;
   UInt16            hcFrameNumber;
   OHCITransferData  *prevTransfer;
   OHCITransferData  *currTransfer;
-  OHCITransferData  *nextTransfer;
   bool              signalSecondaryInt;
   
   intEnable = readReg32(kOHCIRegIntEnable);
@@ -37,7 +38,17 @@ bool WiiOHCI::filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource
   signalSecondaryInt = false;
 
   //
+  // Scheduling overrun.
+  // Clear and move on.
+  //
+  if (intStatus & kOHCIRegIntStatusSchedulingOverrun) {
+    writeReg32(kOHCIRegIntStatus, kOHCIRegIntStatusSchedulingOverrun);
+    OSSynchronizeIO();
+  }
+
+  //
   // Done queue head written.
+  // Process the done queue.
   //
   if (intStatus & kOHCIRegIntStatusWritebackDoneHead) {
     clock_get_uptime(&timeStamp);
@@ -56,13 +67,33 @@ bool WiiOHCI::filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource
     numTDs       = 0;
     prevTransfer = NULL;
     currTransfer = getTransferFromPhys(newWriteDoneHeadPhysAddr);
-    nextTransfer = NULL;
     while (currTransfer != NULL) {
-      nextTransfer = getTransferFromPhys(USBToHostLong(currTransfer->genTD->nextTDPhysAddr));
+      //
+      // Update timestamp and status for low latency isochronous transfers.
+      //
+      if (currTransfer->type == kOHCITransferTypeIsochronousLowLatency) {
+        frameCount = ((USBToHostLong(currTransfer->isoTD->flags) & kOHCIIsoTDFlagsFrameCountMask) >> kOHCIIsoTDFlagsFrameCountShift) + 1;
+        for (UInt16 i = 0; i < frameCount; i++) {
+          pktOffStatus = USBToHostWord(currTransfer->isoTD->packetOffsetStatus[i]);
+          
+          currTransfer->isoLowFrames[currTransfer->isoFrameIndex + i].frTimeStamp = timeStamp;
+          if (((pktOffStatus & kOHCIIsoTDPktOffsetConditionCodeMask) >> kOHCIIsoTDPktOffsetConditionCodeShift) == kOHCITDConditionCodeNotAccessedPSW) {
+            currTransfer->isoLowFrames[currTransfer->isoFrameIndex + i].frStatus   = convertTDStatus(kOHCITDConditionCodeNotAccessed);
+            currTransfer->isoLowFrames[currTransfer->isoFrameIndex + i].frActCount = 0;
+          } else {
+            currTransfer->isoLowFrames[currTransfer->isoFrameIndex + i].frStatus = convertTDStatus((pktOffStatus & kOHCIIsoTDPktStatusConditionCodeMask) >> kOHCIIsoTDPktStatusConditionCodeShift);
+            if ((currTransfer->isoLowFrames[currTransfer->isoFrameIndex + i].frStatus == kIOReturnSuccess) && (currTransfer->direction == kUSBOut)) {
+              currTransfer->isoLowFrames[currTransfer->isoFrameIndex + i].frActCount = currTransfer->isoLowFrames[currTransfer->isoFrameIndex + i].frReqCount;
+            } else {
+              currTransfer->isoLowFrames[currTransfer->isoFrameIndex + i].frActCount = pktOffStatus & kOHCIIsoTDPktStatusSizeMask;
+            }
+          }
+        }
+      }
 
       numTDs++;
       prevTransfer = currTransfer;
-      currTransfer = nextTransfer;
+      currTransfer = getTransferFromPhys(USBToHostLong(currTransfer->genTD->nextTDPhysAddr));
     }
 
     //
@@ -78,12 +109,47 @@ bool WiiOHCI::filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource
 
     IOSimpleLockUnlock(_writeDoneHeadLock);
 
-    _writeDoneHeadChanged = true;
-    signalSecondaryInt    = true;
+    _intWriteDoneHead  = true;
+    signalSecondaryInt = true;
+  }
+
+  //
+  // Start of frame.
+  // Clear/disable and move on.
+  //
+  if (intStatus & kOHCIRegIntStatusStartOfFrame) {
+    writeReg32(kOHCIRegIntStatus, kOHCIRegIntStatusStartOfFrame);
+    OSSynchronizeIO();
+
+    writeReg32(kOHCIRegIntDisable, kOHCIRegIntDisableStartOfFrame);
+    OSSynchronizeIO();
+  }
+
+  //
+  // Resume detected.
+  //
+  if (intStatus & kOHCIRegIntStatusResumeDetected) {
+    writeReg32(kOHCIRegIntStatus, kOHCIRegIntStatusResumeDetected);
+    OSSynchronizeIO();
+
+    _intResumeDetected = true;
+    signalSecondaryInt = true;
+  }
+
+  //
+  // Unrecoverable error.
+  //
+  if (intStatus & kOHCIRegIntStatusUnrecoverableError) {
+    writeReg32(kOHCIRegIntStatus, kOHCIRegIntStatusUnrecoverableError);
+    OSSynchronizeIO();
+
+    _intUnrecoverableError = true;
+    signalSecondaryInt     = true;
   }
 
   //
   // Frame number overflow.
+  // Increment frame number counter.
   //
   if (intStatus & kOHCIRegIntEnableFrameNumberOverflow) {
     if (USBToHostWord(_hccaPtr->frameNumber) < BIT15) {
@@ -101,8 +167,17 @@ bool WiiOHCI::filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource
     writeReg32(kOHCIRegIntStatus, kOHCIRegIntStatusRootHubStatusChange);
     OSSynchronizeIO();
 
-    _rootHubStatusChanged = true;
-    signalSecondaryInt    = true;
+    _intRootHubStatus  = true;
+    signalSecondaryInt = true;
+  }
+
+  //
+  // Ownership change.
+  // Should never occur.
+  //
+  if (intStatus & kOHCIRegIntStatusOwnershipChange) {
+    writeReg32(kOHCIRegIntStatus, kOHCIRegIntStatusOwnershipChange);
+    OSSynchronizeIO();
   }
 
   //
@@ -125,13 +200,13 @@ void WiiOHCI::handleInterrupt(IOInterruptEventSource *intEventSource, int count)
   UInt32            newWriteHeadDoneProducerCount;
   IOPhysicalAddress newWriteHeadDonePhysAddr;
 
-  WIIDBGLOG("Interrupt: WH: %u, RH: %u", _writeDoneHeadChanged, _rootHubStatusChanged);
+  WIIDBGLOG("Interrupt: WH: %u, RH: %u", _intWriteDoneHead, _intRootHubStatus);
 
   //
   // Done queue head written.
   //
-  if (_writeDoneHeadChanged) {
-    _writeDoneHeadChanged = false;
+  if (_intWriteDoneHead) {
+    _intWriteDoneHead = false;
 
     intState = IOSimpleLockLockDisableInterrupt(_writeDoneHeadLock);
 
@@ -146,8 +221,8 @@ void WiiOHCI::handleInterrupt(IOInterruptEventSource *intEventSource, int count)
   //
   // Root hub status change.
   //
-  if (_rootHubStatusChanged) {
-    _rootHubStatusChanged = false;
+  if (_intRootHubStatus) {
+    _intRootHubStatus = false;
     completeRootHubInterruptTransfer(false);
   }
 }

@@ -469,7 +469,6 @@ void WiiOHCI::completeIsochTransfer(OHCITransferData *transfer, IOReturn status)
   UInt16    pktOffStatus;
   bool      underrun;
   IOReturn  aggStatus;
-  AbsoluteTime timeStamp;
 
   hcStatus   = (USBToHostLong(transfer->isoTD->flags) & kOHCIIsoTDFlagsConditionCodeMask) >> kOHCIIsoTDFlagsConditionCodeShift;
   frameCount = ((USBToHostLong(transfer->isoTD->flags) & kOHCIIsoTDFlagsFrameCountMask) >> kOHCIIsoTDFlagsFrameCountShift) + 1;
@@ -477,8 +476,6 @@ void WiiOHCI::completeIsochTransfer(OHCITransferData *transfer, IOReturn status)
   offset    = 0;
   underrun  = false;
   aggStatus = kIOReturnSuccess;
-
-  clock_get_uptime(&timeStamp);
 
   //
   // Overruns indicate a no bandwidth condition per the OHCI spec (see 4.3.2.3.5.3 Time Errors).
@@ -523,10 +520,6 @@ void WiiOHCI::completeIsochTransfer(OHCITransferData *transfer, IOReturn status)
         } else {
           transfer->isoLowFrames[transfer->isoFrameIndex + i].frActCount = pktOffStatus & kOHCIIsoTDPktStatusSizeMask;
         }
-
-        if (transfer->isoLowFrames[transfer->isoFrameIndex + i].frActCount != transfer->isoLowFrames[transfer->isoFrameIndex + i].frReqCount) {
-          WIISYSLOG("mismatch");
-        }
       }
 
       //
@@ -541,7 +534,6 @@ void WiiOHCI::completeIsochTransfer(OHCITransferData *transfer, IOReturn status)
         }
       }
       transfer->isoLowFrames[transfer->isoFrameIndex + i].frStatus = frameStatus;
-      transfer->isoLowFrames[transfer->isoFrameIndex + i].frTimeStamp = timeStamp;
     } else {
       //
       // Check if frame was even accessed.
@@ -564,10 +556,6 @@ void WiiOHCI::completeIsochTransfer(OHCITransferData *transfer, IOReturn status)
           transfer->isoFrames[transfer->isoFrameIndex + i].frActCount = transfer->isoFrames[transfer->isoFrameIndex + i].frReqCount;
         } else {
           transfer->isoFrames[transfer->isoFrameIndex + i].frActCount = pktOffStatus & kOHCIIsoTDPktStatusSizeMask;
-        }
-
-        if (transfer->isoFrames[transfer->isoFrameIndex + i].frActCount != transfer->isoFrames[transfer->isoFrameIndex + i].frReqCount) {
-          WIISYSLOG("mismatch");
         }
       }
 

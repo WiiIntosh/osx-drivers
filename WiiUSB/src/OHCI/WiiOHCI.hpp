@@ -136,8 +136,10 @@ private:
   volatile IOPhysicalAddress    _writeDoneHeadPhysAddr;
   volatile UInt32               _writeDoneHeadProducerCount;
   volatile UInt32               _writeDoneHeadConsumerCount;
-  volatile bool                 _writeDoneHeadChanged;
-  volatile bool                 _rootHubStatusChanged;
+  volatile bool                 _intWriteDoneHead;
+  volatile bool                 _intResumeDetected;
+  volatile bool                 _intUnrecoverableError;
+  volatile bool                 _intRootHubStatus;
 
   // _invalidate_dcache pointer. This function is not exported on 10.4
   WiiInvalidateDataCacheFunc  _invalidateCacheFunc;
