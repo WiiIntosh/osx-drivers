@@ -16,13 +16,16 @@
 bool WiiOHCI::filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource) {
   UInt32            intEnable;
   UInt32            intStatus;
+  OHCITransferData  *newDoneHeadTransfer;
+  OHCITransferData  *newIsoInHeadTransfer;
+  
   IOPhysicalAddress newWriteDoneHeadPhysAddr;
   AbsoluteTime      timeStamp;
   UInt16            frameCount;
   UInt16            pktOffStatus;
-  UInt32            numTDs;
   UInt16            hcFrameNumber;
-  OHCITransferData  *prevTransfer;
+  OHCITransferData  *tailTransfer;
+  OHCITransferData  *tailIsoInTransfer;
   OHCITransferData  *currTransfer;
   bool              signalSecondaryInt;
   
@@ -62,11 +65,14 @@ bool WiiOHCI::filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource
     OSSynchronizeIO();
 
     //
-    // Find end of the queue chain.
+    // Reverse the queue and get the pointers to transfer data.
+    // The host controller links the newest descriptors to the head of the queue.
     //
-    numTDs       = 0;
-    prevTransfer = NULL;
-    currTransfer = getTransferFromPhys(newWriteDoneHeadPhysAddr);
+    newDoneHeadTransfer   = NULL;
+    newIsoInHeadTransfer  = NULL;
+    tailTransfer          = NULL;
+    tailIsoInTransfer     = NULL;
+    currTransfer          = getTransferFromPhys(newWriteDoneHeadPhysAddr);
     while (currTransfer != NULL) {
       //
       // Update timestamp and status for low latency isochronous transfers.
@@ -91,26 +97,52 @@ bool WiiOHCI::filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource
         }
       }
 
-      numTDs++;
-      prevTransfer = currTransfer;
+      //
+      // Link the transfer to the correct list.
+      // Inbound isochronous transfers go to a different linked list for post-transfer copies.
+      //
+      if (((currTransfer->type == kOHCITransferTypeIsochronous) || (currTransfer->type == kOHCITransferTypeIsochronousLowLatency)) && (currTransfer->direction == kUSBIn)) {
+        currTransfer->nextTransfer = newIsoInHeadTransfer;
+        newIsoInHeadTransfer       = currTransfer;
+
+        if (tailIsoInTransfer == NULL) {
+          tailIsoInTransfer = currTransfer;
+        }
+      } else {
+        currTransfer->nextTransfer = newDoneHeadTransfer;
+        newDoneHeadTransfer        = currTransfer;
+
+        if (tailTransfer == NULL) {
+          tailTransfer = currTransfer;
+        }
+      }
+
       currTransfer = getTransferFromPhys(USBToHostLong(currTransfer->genTD->nextTDPhysAddr));
     }
 
     //
-    // Link the existing head of the completed chain to this new one.
+    // Update the current unprocessed linked lists.
     //
-    IOSimpleLockLock(_writeDoneHeadLock);
-    
-    if (prevTransfer != NULL) {
-      prevTransfer->genTD->nextTDPhysAddr = HostToUSBLong(_writeDoneHeadPhysAddr);
+    if (newDoneHeadTransfer != NULL) {
+      IOSimpleLockLock(_writeDoneHeadLock);
+      
+      tailTransfer->nextTransfer = (OHCITransferData*) _writeDoneHeadPtr;
+      _writeDoneHeadPtr = newDoneHeadTransfer;
+
+      IOSimpleLockUnlock(_writeDoneHeadLock);
+
+      _intWriteDoneHead  = true;
+      signalSecondaryInt = true;
     }
-    _writeDoneHeadPhysAddr       = newWriteDoneHeadPhysAddr;
-    _writeDoneHeadProducerCount += numTDs;
 
-    IOSimpleLockUnlock(_writeDoneHeadLock);
+    if (newIsoInHeadTransfer != NULL) {
+      IOSimpleLockLock(_isoInHeadLock);
 
-    _intWriteDoneHead  = true;
-    signalSecondaryInt = true;
+      tailIsoInTransfer->nextTransfer = (OHCITransferData*) _isoInHeadPtr;
+      _isoInHeadPtr = newIsoInHeadTransfer;
+
+      IOSimpleLockUnlock(_isoInHeadLock);
+    }
   }
 
   //
@@ -198,7 +230,7 @@ bool WiiOHCI::filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource
 void WiiOHCI::handleInterrupt(IOInterruptEventSource *intEventSource, int count) {
   IOInterruptState  intState;
   UInt32            newWriteHeadDoneProducerCount;
-  IOPhysicalAddress newWriteHeadDonePhysAddr;
+  volatile OHCITransferData  *newDoneTransfer;
 
   WIIDBGLOG("Interrupt: WH: %u, RH: %u", _intWriteDoneHead, _intRootHubStatus);
 
@@ -210,12 +242,12 @@ void WiiOHCI::handleInterrupt(IOInterruptEventSource *intEventSource, int count)
 
     intState = IOSimpleLockLockDisableInterrupt(_writeDoneHeadLock);
 
-    newWriteHeadDonePhysAddr      = _writeDoneHeadPhysAddr;
-    newWriteHeadDoneProducerCount = _writeDoneHeadProducerCount;
+    newDoneTransfer   = _writeDoneHeadPtr;
+    _writeDoneHeadPtr = NULL;
 
     IOSimpleLockUnlockEnableInterrupt(_writeDoneHeadLock, intState);
 
-    completeTransferQueue(newWriteHeadDonePhysAddr, newWriteHeadDoneProducerCount);
+    completeTransferQueue((OHCITransferData*) newDoneTransfer);
   }
 
   //
@@ -228,18 +260,77 @@ void WiiOHCI::handleInterrupt(IOInterruptEventSource *intEventSource, int count)
 }
 
 //
-// Handles isochronous timer events.
+// Handles isochronous inbound timer events.
 //
 // This function is not called within the regular workloop context.
+// This timer is running when isochronous endpoints are present.
+//
+void WiiOHCI::handleIsoInTimer(IOTimerEventSource *sender) {
+  IOInterruptState  intState;
+  OHCITransferData  *currTransfer;
+  OHCITransferData  *prevTransfer;
+  OHCITransferData  *headIsoInTransfer;
+
+  //
+  // Get the current list of the inbound isochronous transfers.
+  //
+  intState = IOSimpleLockLockDisableInterrupt(_isoInHeadLock);
+
+  headIsoInTransfer = (OHCITransferData*) _isoInHeadPtr;
+  _isoInHeadPtr     = NULL;
+
+  IOSimpleLockUnlockEnableInterrupt(_isoInHeadLock, intState);
+
+  //
+  // Iterate through the chain and copy data back to the source buffers.
+  //
+  prevTransfer = NULL;
+  currTransfer = headIsoInTransfer;
+  while (currTransfer != NULL) {
+    if (currTransfer->srcBuffer != NULL) {
+      _invalidateCacheFunc((vm_offset_t) currTransfer->bounceBuffer->buf, currTransfer->actualBufferSize, false);
+      currTransfer->srcBuffer->writeBytes(0, currTransfer->bounceBuffer->buf, currTransfer->isoFrames[currTransfer->isoFrameIndex].frActCount);
+    }
+
+    prevTransfer = currTransfer;
+    currTransfer = currTransfer->nextTransfer;
+  }
+
+  //
+  // Link to the main completed transfer chain.
+  //
+  if (headIsoInTransfer != NULL) {
+    intState = IOSimpleLockLockDisableInterrupt(_writeDoneHeadLock);
+
+    prevTransfer->nextTransfer = (OHCITransferData*) _writeDoneHeadPtr;
+    _writeDoneHeadPtr          = (OHCITransferData*)  headIsoInTransfer;
+
+    IOSimpleLockUnlockEnableInterrupt(_writeDoneHeadLock, intState);
+
+    //
+    // Signal the main handler there are new completed transfers.
+    //
+    _intWriteDoneHead = true;
+    _interruptEventSource->signalInterrupt();
+  }
+
+  _isoInTimerEventSource->setTimeoutUS(kWiiOHCIIsoTimerRefreshUS);
+}
+
+//
+// Handles isochronous outbound timer events.
+//
+// This function is not called within the regular workloop context.
+// This timer is running when isochronous endpoints are present.
 // The timer is stopped/started when the endpoint list has items removed.
 //
-void WiiOHCI::handleIsoTimer(IOTimerEventSource *sender) {
+void WiiOHCI::handleIsoOutTimer(IOTimerEventSource *sender) {
   UInt16            hcFrameNumber;
   OHCIEndpointData  *currEndpoint;
   OHCITransferData  *currTransfer;
 
   //
-  // Iterate through each isochronous endpoint and check for transfer descriptors that are about to be sent.
+  // Iterate through each outbound isochronous endpoint and check for transfer descriptors that are about to be sent.
   //
   currEndpoint = _isoEndpointHeadPtr;
   while (currEndpoint != _isoEndpointTailPtr) {
@@ -257,7 +348,7 @@ void WiiOHCI::handleIsoTimer(IOTimerEventSource *sender) {
       // Check if transfer hasn't already been copied, and is going to be transferred shortly if outbound.
       //
       hcFrameNumber = USBToHostWord(_hccaPtr->frameNumber);
-      if (!currTransfer->isoBufferCopied && (currTransfer->isoFrameStart > hcFrameNumber)) {
+      if ((currTransfer->direction == kUSBOut) && !currTransfer->isoBufferCopied && (currTransfer->isoFrameStart > hcFrameNumber)) { // TODO: Better calculation here
         if ((currTransfer->isoFrameStart - hcFrameNumber) < 3) {
           if (currTransfer->srcBuffer != NULL) {
             currTransfer->srcBuffer->readBytes(0, currTransfer->bounceBuffer->buf, currTransfer->actualBufferSize);
@@ -273,7 +364,7 @@ void WiiOHCI::handleIsoTimer(IOTimerEventSource *sender) {
     currEndpoint = currEndpoint->nextEndpoint;
   }
 
-  _isoTimerEventSource->setTimeoutUS(kWiiOHCIIsoTimerRefreshUS);
+  _isoOutTimerEventSource->setTimeoutUS(kWiiOHCIIsoTimerRefreshUS);
 }
 
 //

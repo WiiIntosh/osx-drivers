@@ -130,12 +130,14 @@ private:
   // Interrupts.
   //
   IOFilterInterruptEventSource  *_interruptEventSource;
-  IOWorkLoop                    *_isoTimerWorkLoop;
-  IOTimerEventSource            *_isoTimerEventSource;
+  IOWorkLoop                    *_isoInTimerWorkLoop;
+  IOWorkLoop                    *_isoOutTimerWorkLoop;
+  IOTimerEventSource            *_isoInTimerEventSource;
+  IOTimerEventSource            *_isoOutTimerEventSource;
   IOSimpleLock                  *_writeDoneHeadLock;
-  volatile IOPhysicalAddress    _writeDoneHeadPhysAddr;
-  volatile UInt32               _writeDoneHeadProducerCount;
-  volatile UInt32               _writeDoneHeadConsumerCount;
+  volatile OHCITransferData     *_writeDoneHeadPtr;
+  IOSimpleLock                  *_isoInHeadLock;
+  volatile OHCITransferData     *_isoInHeadPtr;
   volatile bool                 _intWriteDoneHead;
   volatile bool                 _intResumeDetected;
   volatile bool                 _intUnrecoverableError;
@@ -214,7 +216,8 @@ private:
   //
   bool filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource);
   void handleInterrupt(IOInterruptEventSource *intEventSource, int count);
-  void handleIsoTimer(IOTimerEventSource *sender);
+  void handleIsoInTimer(IOTimerEventSource *sender);
+  void handleIsoOutTimer(IOTimerEventSource *sender);
 
   IOReturn simulateRootHubControlEDCreate(UInt8 endpointNumber, UInt16 maxPacketSize, UInt8 speed);
   IOReturn simulateRootHubInterruptEDCreate(short endpointNumber, UInt8 direction, short speed, UInt16 maxPacketSize);
@@ -269,7 +272,7 @@ private:
                            UInt32 updateFrequency, bool isLowLatency);
   void completeGeneralTransfer(OHCITransferData *transfer);
   void completeIsochTransfer(OHCITransferData *transfer, IOReturn status);
-  void completeTransferQueue(IOPhysicalAddress headPhysAddr, UInt32 producerCount);
+  void completeTransferQueue(OHCITransferData *headTransfer);
 
 protected:
   //

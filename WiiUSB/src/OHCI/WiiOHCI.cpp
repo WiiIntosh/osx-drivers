@@ -20,6 +20,10 @@ bool WiiOHCI::init(OSDictionary *dictionary) {
   _mem2Allocator          = NULL;
   _baseAddr               = NULL;
   _interruptEventSource   = NULL;
+  _isoInTimerWorkLoop     = NULL;
+  _isoInTimerEventSource  = NULL;
+  _isoOutTimerWorkLoop    = NULL;
+  _isoOutTimerEventSource = NULL;
 
   _intWriteDoneHead       = false;
   _intResumeDetected      = false;
@@ -41,6 +45,11 @@ bool WiiOHCI::init(OSDictionary *dictionary) {
 
   _writeDoneHeadLock = IOSimpleLockAlloc();
   if (_writeDoneHeadLock == NULL) {
+    return false;
+  }
+
+  _isoInHeadLock = IOSimpleLockAlloc();
+  if (_isoInHeadLock == NULL) {
     return false;
   }
 
@@ -273,21 +282,38 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
   }
 
   //
-  // Configure isochronous bounce buffer refresh timer.
+  // Configure isochronous inbound bounce buffer refresh timer.
   // Timer is on its own workloop to avoid any delays.
   //
-  _isoTimerWorkLoop = IOWorkLoop::workLoop();
-  if (_isoTimerWorkLoop == NULL) {
+  _isoInTimerWorkLoop = IOWorkLoop::workLoop();
+  if (_isoInTimerWorkLoop == NULL) {
     return kIOReturnNoMemory;
   }
 
-  _isoTimerEventSource = IOTimerEventSource::timerEventSource(this,
-    OSMemberFunctionCast(IOTimerEventSource::Action, this, &WiiOHCI::handleIsoTimer));
-  if (_isoTimerEventSource == NULL) {
+  _isoInTimerEventSource = IOTimerEventSource::timerEventSource(this,
+    OSMemberFunctionCast(IOTimerEventSource::Action, this, &WiiOHCI::handleIsoInTimer));
+  if (_isoInTimerEventSource == NULL) {
     return kIOReturnNoMemory;
   }
-  _isoTimerWorkLoop->addEventSource(_isoTimerEventSource);
-  _isoTimerEventSource->disable();
+  _isoInTimerWorkLoop->addEventSource(_isoInTimerEventSource);
+  _isoInTimerEventSource->disable();
+
+  //
+  // Configure isochronous outbound bounce buffer refresh timer.
+  // Timer is on its own workloop to avoid any delays.
+  //
+  _isoOutTimerWorkLoop = IOWorkLoop::workLoop();
+  if (_isoOutTimerWorkLoop == NULL) {
+    return kIOReturnNoMemory;
+  }
+
+  _isoOutTimerEventSource = IOTimerEventSource::timerEventSource(this,
+    OSMemberFunctionCast(IOTimerEventSource::Action, this, &WiiOHCI::handleIsoOutTimer));
+  if (_isoOutTimerEventSource == NULL) {
+    return kIOReturnNoMemory;
+  }
+  _isoOutTimerWorkLoop->addEventSource(_isoOutTimerEventSource);
+  _isoOutTimerEventSource->disable();
 
   //
   // Disable all interrupts.

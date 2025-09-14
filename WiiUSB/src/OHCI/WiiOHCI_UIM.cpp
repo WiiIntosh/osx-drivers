@@ -608,68 +608,24 @@ void WiiOHCI::completeIsochTransfer(OHCITransferData *transfer, IOReturn status)
 //
 // This function is gated and called within the workloop context.
 //
-void WiiOHCI::completeTransferQueue(IOPhysicalAddress headPhysAddr, UInt32 producerCount) {
+void WiiOHCI::completeTransferQueue(OHCITransferData *headTransfer) {
   OHCITransferData  *prevTransfer;
   OHCITransferData  *currTransfer;
   OHCITransferData  *nextTransfer;
-  UInt32            consumerCount;
   UInt8             hcStatus;
 
   //
   // Verify there actually is a queue.
   //
-  if (headPhysAddr == 0) {
+  if (headTransfer == NULL) {
     return;
   }
-
-  consumerCount = _writeDoneHeadConsumerCount;
-  if (consumerCount == producerCount) {
-    WIIDBGLOG("Nothing to process");
-    return;
-  }
-
-  WIIDBGLOG("Head done: 0x%X", headPhysAddr);
-  currTransfer = getTransferFromPhys(headPhysAddr);
-  if (currTransfer == NULL) {
-    WIISYSLOG("head TD is NULL");
-    while (true);
-    return;
-  }
-
-  //
-  // Reverse the queue and get the pointers to transfer data.
-  // The host controller links the newest descriptors to the head of the queue.
-  //
-  prevTransfer = NULL;
-  while (true) {
-    WIIDBGLOG("TD phys: 0x%X", currTransfer->physAddr);
-
-    currTransfer->nextTransfer = prevTransfer;
-    prevTransfer               = currTransfer;
-    consumerCount++;
-    
-    if (consumerCount == producerCount) {
-      break;
-    }
-
-    if ((currTransfer->type == kOHCITransferTypeIsochronous) || (currTransfer->type == kOHCITransferTypeIsochronousLowLatency)) {
-      nextTransfer = getTransferFromPhys(USBToHostLong(currTransfer->isoTD->nextTDPhysAddr));
-    } else {
-      nextTransfer = getTransferFromPhys(USBToHostLong(currTransfer->genTD->nextTDPhysAddr));
-    }
-    if (nextTransfer == NULL) {
-      break;
-    }
-
-    currTransfer = nextTransfer;
-  }
-
-  currTransfer                = prevTransfer;
-  _writeDoneHeadConsumerCount = consumerCount;
+  WIIDBGLOG("Head done: 0x%X", headTransfer->physAddr);
 
   //
   // Process completion for each transfer.
   //
+  currTransfer = headTransfer;
   while (currTransfer != NULL) {
     if ((currTransfer->type == kOHCITransferTypeIsochronous) || (currTransfer->type == kOHCITransferTypeIsochronousLowLatency)) {
       hcStatus = (USBToHostLong(currTransfer->isoTD->flags) & kOHCIIsoTDFlagsConditionCodeMask) >> kOHCIIsoTDFlagsConditionCodeShift;
@@ -1023,11 +979,13 @@ IOReturn WiiOHCI::UIMCreateIsochEndpoint(short functionAddress, short endpointNu
   }
 
   //
-  // Startup the isochronous refresh timer if this is the first endpoint.
+  // Startup the isochronous refresh timers if this is the first endpoint. TODO: Maybe can run only applicable timers.
   //
   if (firstEndpoint) {
-    _isoTimerEventSource->enable();
-    _isoTimerEventSource->setTimeoutUS(kWiiOHCIIsoTimerRefreshUS);
+    _isoInTimerEventSource->enable();
+    _isoOutTimerEventSource->enable();
+    _isoInTimerEventSource->setTimeoutUS(kWiiOHCIIsoTimerRefreshUS);
+    _isoOutTimerEventSource->setTimeoutUS(kWiiOHCIIsoTimerRefreshUS);
   }
 
   _isoBandwidthAvailable -= maxPacketSize;
@@ -1147,8 +1105,8 @@ IOReturn WiiOHCI::UIMDeleteEndpoint(short functionNumber, short endpointNumber, 
   //
   writeReg32(kOHCIRegControl, readReg32(kOHCIRegControl) & ~(listMask));
   if (endpoint->isochronous) {
-    _isoTimerEventSource->cancelTimeout();
-    _isoTimerEventSource->disable();
+    _isoOutTimerEventSource->cancelTimeout();
+    _isoOutTimerEventSource->disable();
   }
   IOSleep(2);
 
@@ -1159,8 +1117,8 @@ IOReturn WiiOHCI::UIMDeleteEndpoint(short functionNumber, short endpointNumber, 
   prevEndpoint->ed->nextEDPhysAddr = endpoint->ed->nextEDPhysAddr;
   writeReg32(kOHCIRegControl, readReg32(kOHCIRegControl) | listMask);
   if (endpoint->isochronous) {
-    _isoTimerEventSource->enable();
-    _isoTimerEventSource->setTimeoutUS(kWiiOHCIIsoTimerRefreshUS);
+    _isoOutTimerEventSource->enable();
+    _isoOutTimerEventSource->setTimeoutUS(kWiiOHCIIsoTimerRefreshUS);
   }
   WIIDBGLOG("Unlinked EP phys: 0x%X", endpoint->physAddr);
 
@@ -1173,11 +1131,13 @@ IOReturn WiiOHCI::UIMDeleteEndpoint(short functionNumber, short endpointNumber, 
     WIIDBGLOG("Returned iso bandwidth: %u bytes, available: %u", maxPacketSize, _isoBandwidthAvailable);
 
     //
-    // If there are no longer any active isochronous endpoints, stop the timer.
+    // If there are no longer any active isochronous endpoints, stop the timers.
     //
     if (_isoEndpointHeadPtr->nextEndpoint == _isoEndpointTailPtr) {
-      _isoTimerEventSource->cancelTimeout();
-      _isoTimerEventSource->disable();
+      _isoInTimerEventSource->cancelTimeout();
+      _isoOutTimerEventSource->cancelTimeout();
+      _isoInTimerEventSource->disable();
+      _isoOutTimerEventSource->disable();
     }
   }
 
