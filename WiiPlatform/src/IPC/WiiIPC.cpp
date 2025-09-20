@@ -19,6 +19,9 @@ static WiiIPC *gWiiIPC;
 #define CMD_REBOOT    0xCAFE0002
 // Get RTC bias (Cafe only).
 #define CMD_RTC_BIAS  0xCAFE0003
+// Print (Cafe only).
+#define CMD_PRINT       0xCAFE6400
+#define CMD_PRINT_MASK  0xFFFFFF00
 
 static int handleWiiPEHaltRestart(unsigned int type) {
   return gWiiIPC->doHaltRestart(type);
@@ -72,12 +75,15 @@ bool WiiIPC::start(IOService *provider) {
 // Overrides IOService::callPlatformFunction().
 //
 IOReturn WiiIPC::callPlatformFunction(const OSSymbol *functionName, bool waitForFunction,
-                                          void *param1, void *param2, void *param3, void *param4) {
+                                      void *param1, void *param2, void *param3, void *param4) {
   if (functionName->isEqualTo(kWiiFuncIPCGetRTCBias)) {
     writeReg32(kWiiIPCPPCMSG, CMD_RTC_BIAS);
     writeReg32(kWiiIPCPPCCTRL, 0x1);
     while (readReg32(kWiiIPCPPCCTRL) & 0x1);
     *((UInt32*) param1) = readReg32(kWiiIPCARMMSG);
+    return kIOReturnSuccess;
+  } else if (functionName->isEqualTo(kWiiFuncIPCCafeLog)) {
+    doLog((const char *) param1);
     return kIOReturnSuccess;
   }
 
@@ -103,5 +109,18 @@ int WiiIPC::doHaltRestart(unsigned int type) {
 
     default:
       return -1;
+  }
+}
+
+//
+// Writes a string to the log.
+//
+void WiiIPC::doLog(const char *str) {
+  const char *strPtr = str;
+  while (*strPtr != 0) {
+    writeReg32(kWiiIPCPPCMSG, CMD_PRINT | (UInt32)(*strPtr));
+    writeReg32(kWiiIPCPPCCTRL, 0x1);
+    while (readReg32(kWiiIPCPPCCTRL) & 0x1);
+    strPtr++;
   }
 }

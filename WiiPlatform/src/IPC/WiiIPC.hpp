@@ -40,6 +40,7 @@ public:
                                 void *param1, void *param2, void *param3, void *param4);
 
   int doHaltRestart(unsigned int type);
+  void doLog(const char *str);
 };
 
 #endif
