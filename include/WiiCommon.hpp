@@ -64,6 +64,7 @@
 #define kWiiFuncPlatformGetInvalidateCache  "PlatformGetInvalidateCache"
 #define kWiiFuncPlatformGetMem2Allocator    "PlatformGetMem2Allocator"
 #define kWiiFuncIPCGetRTCBias               "IPCGetRTCBias"
+#define kWiiFuncIPCCafeLog                  "IPCCafeLog"
 
 //
 // Major kernel version exported from XNU.
