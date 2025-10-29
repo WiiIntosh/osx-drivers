@@ -473,7 +473,7 @@ IOReturn WiiOHCI::simulateRootHubInterruptEDCreate(short endpointNumber, UInt8 d
 // Simulates an interrupt transfer for the root hub.
 //
 void WiiOHCI::simulateRootHubInterruptTransfer(short endpointNumber, IOUSBCompletion completion,
-                                                   IOMemoryDescriptor *CBP, bool bufferRounding, UInt32 bufferSize, short direction) {
+                                               IOMemoryDescriptor *CBP, bool bufferRounding, UInt32 bufferSize, short direction) {
   //
   // Only endpoint 1 is supported.
   //
@@ -497,6 +497,7 @@ void WiiOHCI::simulateRootHubInterruptTransfer(short endpointNumber, IOUSBComple
       // Enable the root hub status change interrupt.
       // These interrupt transfers will get completed when that arrives.
       //
+      WIIDBGLOG("Queuing root hub change interrupt transfer");
       writeReg32(kOHCIRegIntEnable, readReg32(kOHCIRegIntEnable) | kOHCIRegIntEnableRootHubStatusChange);
       return;
     }
@@ -565,11 +566,6 @@ void WiiOHCI::completeRootHubInterruptTransfer(bool abort) {
 
   if (abort || ((statusChangedBitmap != 0) && (_rootHubInterruptTransactions[0].completion.action != NULL))) {
     //
-    // Disable the root hub status change interrupt.
-    //
-    writeReg32(kOHCIRegIntDisable, kOHCIRegIntDisableRootHubStatusChange);
-
-    //
     // Get first one and move all others forward.
     //
     IOTakeLock(_rootHubInterruptTransLock);
@@ -594,7 +590,14 @@ void WiiOHCI::completeRootHubInterruptTransfer(bool abort) {
       bufferLengthDelta = 1;
     }
 
+    WIIDBGLOG("Completing root hub change interrupt transfer");
     lastTransaction.buffer->writeBytes(0, &statusChangedBitmap, bufferLengthDelta);
     Complete(lastTransaction.completion, abort ? kIOReturnAborted : kIOReturnSuccess, lastTransaction.bufferLength - bufferLengthDelta);
+  } else if (statusChangedBitmap == 0) {
+    //
+    // Re-enable the interrupt, no actual change occurred here.
+    //
+    WIIDBGLOG("No root hub port change, re-arming interrupt");
+    writeReg32(kOHCIRegIntEnable, readReg32(kOHCIRegIntEnable) | kOHCIRegIntEnableRootHubStatusChange);
   }
 }

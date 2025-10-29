@@ -53,6 +53,11 @@ bool WiiOHCI::init(OSDictionary *dictionary) {
     return false;
   }
 
+  _intRootHubStatusLock = IOSimpleLockAlloc();
+  if (_intRootHubStatusLock == NULL) {
+    return false;
+  }
+
   _rootHubInterruptTransLock = IOLockAlloc();
   if (_rootHubInterruptTransLock == NULL) {
     return false;

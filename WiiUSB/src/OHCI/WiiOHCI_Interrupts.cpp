@@ -199,7 +199,10 @@ bool WiiOHCI::filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource
     writeReg32(kOHCIRegIntStatus, kOHCIRegIntStatusRootHubStatusChange);
     OSSynchronizeIO();
 
-    _intRootHubStatus  = true;
+    IOSimpleLockLock(_intRootHubStatusLock);
+    _intRootHubStatus = true;
+    IOSimpleLockUnlock(_intRootHubStatusLock);
+
     signalSecondaryInt = true;
   }
 
@@ -254,7 +257,9 @@ void WiiOHCI::handleInterrupt(IOInterruptEventSource *intEventSource, int count)
   // Root hub status change.
   //
   if (_intRootHubStatus) {
+    intState = IOSimpleLockLockDisableInterrupt(_intRootHubStatusLock);
     _intRootHubStatus = false;
+    IOSimpleLockUnlockEnableInterrupt(_intRootHubStatusLock, intState);
     completeRootHubInterruptTransfer(false);
   }
 }

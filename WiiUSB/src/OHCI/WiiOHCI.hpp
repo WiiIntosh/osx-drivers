@@ -141,6 +141,7 @@ private:
   volatile bool                 _intWriteDoneHead;
   volatile bool                 _intResumeDetected;
   volatile bool                 _intUnrecoverableError;
+  IOSimpleLock                  *_intRootHubStatusLock;
   volatile bool                 _intRootHubStatus;
 
   // _invalidate_dcache pointer. This function is not exported on 10.4
