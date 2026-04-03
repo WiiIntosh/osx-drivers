@@ -696,7 +696,7 @@ void WiiOHCI::removeEndpointTransfers(OHCIEndpointData *endpoint) {
     while (transferCurr != endpoint->transferTail) {
       if (transferCurr == NULL) {
         // Shouldn't occur.
-        WIISYSLOG("Got an invalid TD here");
+        WIISYSLOG("Got an invalid IsoTD here");
         return;
       }
 
@@ -713,7 +713,7 @@ void WiiOHCI::removeEndpointTransfers(OHCIEndpointData *endpoint) {
     while (transferCurr != endpoint->transferTail) {
       if (transferCurr == NULL) {
         // Shouldn't occur.
-        WIISYSLOG("Got an invalid TD here");
+        WIISYSLOG("Got an invalid GenTD here");
         return;
       }
 

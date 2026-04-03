@@ -85,6 +85,8 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
   UInt32          ohciRemoteWakeup;
   IOReturn        status;
 
+  WiiSetDebugLocation(provider->getLocation());
+
   //
   // Map controller memory.
   //

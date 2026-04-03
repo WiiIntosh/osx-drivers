@@ -135,11 +135,30 @@ typedef void (*WiiInvalidateDataCacheFunc)(vm_offset_t va, unsigned length, bool
 //
 // Debug logging function.
 //
-inline void logPrint(const char *className, const char *funcName, const char *format, va_list va) {
+inline void logPrint(const char *className, const char *locationName, const char *funcName, const char *format, va_list va) {
   char tmp[256];
   tmp[0] = '\0';
   vsnprintf(tmp, sizeof (tmp), format, va);
-  IOLog("%s::%s(): %s\n", className, funcName, tmp);
+  if (locationName != NULL) {
+    IOLog("%s[%s]::%s(): %s\n", className, locationName, funcName, tmp);
+  } else {
+    IOLog("%s::%s(): %s\n", className, funcName, tmp);
+  }
+
+  mach_timespec_t  t;
+  t.tv_sec = 2;
+  t.tv_nsec = 0;
+
+  IOService *ipcService = IOService::waitForService(IOService::nameMatching("WiiIPC"), &t);
+  if (ipcService != NULL) {
+    char msg[256];
+    if (locationName != NULL) {
+      snprintf(msg, sizeof (msg), "%s[%s]::%s(): %s\n", className, locationName, funcName, tmp);
+    } else {
+      snprintf(msg, sizeof (msg), "%s::%s(): %s\n", className, funcName, tmp);
+    }
+    ipcService->callPlatformFunction(kWiiFuncIPCCafeLog, true, (void*) msg, NULL, NULL, NULL);
+  }
 }
 
 //
@@ -148,14 +167,19 @@ inline void logPrint(const char *className, const char *funcName, const char *fo
 #define WiiDeclareLogFunctions(a) \
   protected: \
   bool _debugEnabled; \
+  const char *_debugLocation; \
   inline void WiiCheckDebugArgs() { \
     _debugEnabled = checkKernelArgument("-wii" a "dbg"); \
+    _debugLocation = NULL; \
+  } \
+  inline void WiiSetDebugLocation(const char *location) { \
+    _debugLocation = location; \
   } \
   inline void WIIDBGLOG_PRINT(const char *func, const char *str, ...) const { \
     if (this->_debugEnabled) { \
       va_list args; \
       va_start(args, str); \
-      logPrint(this->getMetaClass()->getClassName(), func, str, args); \
+      logPrint(this->getMetaClass()->getClassName(), _debugLocation, func, str, args); \
       va_end(args); \
     } \
   } \
@@ -163,7 +187,7 @@ inline void logPrint(const char *className, const char *funcName, const char *fo
   inline void WIISYSLOG_PRINT(const char *func, const char *str, ...) const { \
     va_list args; \
     va_start(args, str); \
-    logPrint(this->getMetaClass()->getClassName(), func, str, args); \
+    logPrint(this->getMetaClass()->getClassName(), _debugLocation, func, str, args); \
     va_end(args); \
   } \
   protected:
@@ -180,11 +204,15 @@ inline void logPrint(const char *className, const char *funcName, const char *fo
 //
 // Release print function.
 //
-inline void logPrint(const char *className, const char *format, va_list va) {
+inline void logPrint(const char *className, const char *locationName, const char *format, va_list va) {
   char tmp[256];
   tmp[0] = '\0';
   vsnprintf(tmp, sizeof (tmp), format, va);
-  IOLog("%s: %s\n", className, tmp);
+  if (locationName != NULL) {
+    IOLog("%s[%s]: %s\n", className, locationName, tmp);
+  } else {
+    IOLog("%s: %s\n", className, tmp);
+  }
 }
 
 //
@@ -193,13 +221,20 @@ inline void logPrint(const char *className, const char *format, va_list va) {
 #define WiiDeclareLogFunctions(a) \
   protected: \
   bool _debugEnabled; \
-  inline void WiiCheckDebugArgs() { _debugEnabled = false; } \
+  const char *_debugLocation; \
+  inline void WiiCheckDebugArgs() { \
+    _debugEnabled = false; \
+    _debugLocation = NULL; \
+  } \
+  inline void WiiSetDebugLocation(const char *location) { \
+    _debugLocation = location; \
+  } \
   inline void WIIDBGLOG(const char *str, ...) const { } \
     \
   inline void WIISYSLOG(const char *str, ...) const { \
     va_list args; \
     va_start(args, str); \
-    logPrint(this->getMetaClass()->getClassName(), str, args); \
+    logPrint(this->getMetaClass()->getClassName(), _debugLocation, str, args); \
     va_end(args); \
   } \
   protected:

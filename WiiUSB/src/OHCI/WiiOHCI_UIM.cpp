@@ -24,7 +24,7 @@ IOReturn WiiOHCI::doGeneralTransfer(OHCIEndpointData *endpoint, IOUSBCompletion 
   // Ensure the endpoint is not halted.
   //
   if (USBToHostLong(endpoint->ed->headTDPhysAddr) & kOHCIEDTDHeadHalted) {
-    WIISYSLOG("Pipe is stalled");
+    WIISYSLOG("Pipe is stalled (EP Flags: 0x%X)", USBToHostLong(endpoint->ed->flags));
     return kIOUSBPipeStalled;
   }
 
@@ -146,7 +146,7 @@ IOReturn WiiOHCI::prepareIsochTransfer(OHCITransferData *transfer, IOMemoryDescr
 
   WIIDBGLOG("TD phys: 0x%X, offset: 0x%X, size: 0x%X, fs: %u, fc: %u", transfer->physAddr,
     offset, transferSize, flags & kOHCIIsoTDFlagsStartingFrameMask, numPackets);
-  
+
   //
   // Create bounce buffer and grab the source buffer.
   // Data will be copied in later just before the frame is sent.
