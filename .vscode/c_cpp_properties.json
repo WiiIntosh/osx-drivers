@@ -14,7 +14,10 @@
             "intelliSenseMode": "linux-gcc-x64",
             "compilerPath": "/usr/bin/gcc",
             "cStandard": "c17",
-            "cppStandard": "gnu++17"
+            "cppStandard": "gnu++17",
+            "forcedInclude": [
+                "${workspaceFolder}/.vscode/vscode-preinclude.h"
+            ]
         }
     ],
     "version": 4
