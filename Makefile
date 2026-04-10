@@ -3,7 +3,7 @@ include common/kext_info.mk
 BUILD_PKG	:=	build_pkg
 KEXTS		:=	WiiAudio WiiEXI WiiGraphics WiiPlatform WiiStorage WiiUSB
 MKEXT_NAME	:=	Wii.mkext
-ARCHIVE_ZIP	:= 	WiiIntosh-osx-drivers-$(KEXT_VERSION).zip
+ARCHIVE_ZIP	:= 	Wiintosh-osx-drivers-$(KEXT_VERSION).zip
 
 .PHONY: all clean
 

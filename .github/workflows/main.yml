@@ -22,7 +22,7 @@ jobs:
       - name: CI bootstrap prep
         uses: actions/checkout@v5
         with:
-          repository: WiiIntosh/powerpc-kext-ci
+          repository: Wiintosh/powerpc-kext-ci
           token: ${{ secrets.POWERPC_KEXT_CI }}
           fetch-depth: 1
           lfs: true
