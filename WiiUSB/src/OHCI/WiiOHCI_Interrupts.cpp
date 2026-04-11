@@ -18,7 +18,7 @@ bool WiiOHCI::filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource
   UInt32            intStatus;
   OHCITransferData  *newDoneHeadTransfer;
   OHCITransferData  *newIsoInHeadTransfer;
-  
+
   IOPhysicalAddress newWriteDoneHeadPhysAddr;
   AbsoluteTime      timeStamp;
   UInt16            frameCount;
@@ -28,7 +28,7 @@ bool WiiOHCI::filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource
   OHCITransferData  *tailIsoInTransfer;
   OHCITransferData  *currTransfer;
   bool              signalSecondaryInt;
-  
+
   intEnable = readReg32(kOHCIRegIntEnable);
   intStatus = intEnable & readReg32(kOHCIRegIntStatus);
 
@@ -81,7 +81,7 @@ bool WiiOHCI::filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource
         frameCount = ((USBToHostLong(currTransfer->isoTD->flags) & kOHCIIsoTDFlagsFrameCountMask) >> kOHCIIsoTDFlagsFrameCountShift) + 1;
         for (UInt16 i = 0; i < frameCount; i++) {
           pktOffStatus = USBToHostWord(currTransfer->isoTD->packetOffsetStatus[i]);
-          
+
           currTransfer->isoLowFrames[currTransfer->isoFrameIndex + i].frTimeStamp = timeStamp;
           if (((pktOffStatus & kOHCIIsoTDPktOffsetConditionCodeMask) >> kOHCIIsoTDPktOffsetConditionCodeShift) == kOHCITDConditionCodeNotAccessedPSW) {
             currTransfer->isoLowFrames[currTransfer->isoFrameIndex + i].frStatus   = convertTDStatus(kOHCITDConditionCodeNotAccessed);
@@ -125,7 +125,7 @@ bool WiiOHCI::filterInterrupt(IOFilterInterruptEventSource *filterIntEventSource
     //
     if (newDoneHeadTransfer != NULL) {
       IOSimpleLockLock(_writeDoneHeadLock);
-      
+
       tailTransfer->nextTransfer = (OHCITransferData*) _writeDoneHeadPtr;
       _writeDoneHeadPtr = newDoneHeadTransfer;
 
