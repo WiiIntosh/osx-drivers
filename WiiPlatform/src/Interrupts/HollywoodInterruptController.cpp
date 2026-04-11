@@ -175,6 +175,13 @@ IOReturn HollywoodInterruptController::handleInterrupt(void *refCon, IOService *
     vector->interruptActive = 0;
   }
 
+  //
+  // Acknowledge all asserted interrupts on the controller. Any interrupts will be re-asserted if the
+  // respective handlers did not clear the underlying hardware interrupts.
+  //
+  writeReg32(kWiiHollywoodICBroadwayIRQCause, (UInt32)cause);
+  eieio();
+
   return kIOReturnSuccess;
 }
 
