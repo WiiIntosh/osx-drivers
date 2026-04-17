@@ -33,7 +33,6 @@ bool WiiInterruptController::init(OSDictionary *dictionary) {
 bool WiiInterruptController::start(IOService *provider) {
   OSSymbol    *interruptControllerName;
   bool        vectorLockResult;
-  IOReturn    status;
 
   if (!super::start(provider)) {
     WIISYSLOG("super::start() returned false");

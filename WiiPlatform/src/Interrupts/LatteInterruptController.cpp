@@ -132,18 +132,23 @@ IOInterruptAction LatteInterruptController::getInterruptHandlerAddress(void) {
 //
 IOReturn LatteInterruptController::handleInterrupt(void *refCon, IOService *nub, int source) {
   IOInterruptVector *vector;
-  UInt64            cause;
-  UInt64            mask;
+  UInt32            cause0;
+  UInt32            cause1;
+  UInt32            mask0;
+  UInt32            mask1;
 
   //
   // Get interrupt status/mask and ensure no spurious interrupt.
   //
-  cause = ((UInt64)readReg32(kWiiLatteIntRegPPCInterruptCause0) | ((UInt64)readReg32(kWiiLatteIntRegPPCInterruptCause1) << kWiiLatteIntVectorPerRegCount));
-  mask  = ((UInt64)readReg32(kWiiLatteIntRegPPCInterruptMask0) | ((UInt64)readReg32(kWiiLatteIntRegPPCInterruptMask1) << kWiiLatteIntVectorPerRegCount));
-  if ((cause & mask) == 0) {
+  cause0 = readReg32(kWiiLatteIntRegPPCInterruptCause0);
+  cause1 = readReg32(kWiiLatteIntRegPPCInterruptCause1);
+  mask0  = readReg32(kWiiLatteIntRegPPCInterruptMask0);
+  mask1  = readReg32(kWiiLatteIntRegPPCInterruptMask1);
+  if (((cause0 & mask0) == 0) && ((cause1 & mask1) == 0)) {
     return kIOReturnSuccess;
   }
-  cause &= mask;
+  cause0 &= mask0;
+  cause1 &= mask1;
 
   //
   // Check all vectors.
@@ -152,8 +157,14 @@ IOReturn LatteInterruptController::handleInterrupt(void *refCon, IOService *nub,
     //
     // Check if this vector is active.
     //
-    if ((cause & (1ULL << vectorIndex)) == 0) {
-      continue;
+    if (vectorIndex < kWiiLatteIntVectorPerRegCount) {
+      if ((cause0 & (1 << vectorIndex)) == 0) {
+        continue;
+      }
+    } else {
+      if ((cause1 & (1 << (vectorIndex - kWiiLatteIntVectorPerRegCount))) == 0) {
+        continue;
+      }
     }
 
     vector = &vectors[vectorIndex];
@@ -183,8 +194,8 @@ IOReturn LatteInterruptController::handleInterrupt(void *refCon, IOService *nub,
   // Acknowledge all asserted interrupts on the controller. Any interrupts will be re-asserted if the
   // respective handlers did not clear the underlying hardware interrupts.
   //
-  writeReg32(kWiiLatteIntRegPPCInterruptCause0, (UInt32)cause);
-  writeReg32(kWiiLatteIntRegPPCInterruptCause1, (UInt32)(cause >> kWiiLatteIntVectorPerRegCount));
+  writeReg32(kWiiLatteIntRegPPCInterruptCause0, cause0);
+  writeReg32(kWiiLatteIntRegPPCInterruptCause1, cause1);
   eieio();
 
   return kIOReturnSuccess;
