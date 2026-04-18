@@ -97,7 +97,11 @@ bool WiiEXI::start(IOService *provider) {
   _commandGate->enable();
 
   _interruptEventSource = IOInterruptEventSource::interruptEventSource(this,
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_2
     OSMemberFunctionCast(IOInterruptEventSource::Action, this, &WiiEXI::handleInterrupt),
+#else
+    (IOInterruptEventSource::Action) &WiiEXI::handleInterrupt,
+#endif
     provider, 0);
   if (_interruptEventSource == NULL) {
     WIISYSLOG("Failed to create interrupt");
@@ -136,7 +140,13 @@ bool WiiEXI::start(IOService *provider) {
 UInt32 WiiEXI::getRTC(void) {
   UInt32 data;
 
-  if (_commandGate->runAction(OSMemberFunctionCast(IOCommandGate::Action, this, &WiiEXI::getRTCGated), &data) != kIOReturnSuccess) {
+  if (_commandGate->runAction(
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_2
+    OSMemberFunctionCast(IOCommandGate::Action, this, &WiiEXI::getRTCGated),
+#else
+    (IOCommandGate::Action) &WiiEXI::getRTCGated,
+#endif
+    &data) != kIOReturnSuccess) {
     return 0;
   }
   return data;
