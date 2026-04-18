@@ -97,7 +97,13 @@ IOReturn WiiSDHC::sendCommandAsync(UInt8 commandIndex, UInt8 responseType, UInt3
   sdCommand->setBuffer(buffer);
   sdCommand->setBlockCount(blockCount);
   sdCommand->setStorageCompletion(completion);
-  sdCommand->setCallback(OSMemberFunctionCast(WiiSDCommand::Action, this, &WiiSDHC::handleAsyncReadWriteCompletion), this);
+  sdCommand->setCallback(
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_2
+    OSMemberFunctionCast(WiiSDCommand::Action, this, &WiiSDHC::handleAsyncReadWriteCompletion),
+#else
+    (WiiSDCommand::Action) &WiiSDHC::handleAsyncReadWriteCompletion,
+#endif
+    this);
 
   WIIDBGLOG("Async command: 0x%X, rspType: 0x%X, arg: 0x%X", commandIndex, responseType, argument);
   status = executeCommand(sdCommand);
@@ -139,7 +145,13 @@ IOReturn WiiSDHC::executeCommand(WiiSDCommand *command) {
     return kIOReturnBadArgument;
   }
 
-  return _commandGate->runAction(OSMemberFunctionCast(IOCommandGate::Action, this, &WiiSDHC::executeCommandGated), command);
+  return _commandGate->runAction(
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_2
+    OSMemberFunctionCast(IOCommandGate::Action, this, &WiiSDHC::executeCommandGated),
+#else
+    (IOCommandGate::Action) &WiiSDHC::executeCommandGated,
+#endif
+    command);
 }
 
 //
