@@ -185,9 +185,9 @@ IOReturn WiiSDHC::doAsyncReadWrite(IOMemoryDescriptor *buffer, UInt32 block, UIn
   bool      isRead;
   IOReturn  status;
 
-  if (nblks > 8) {
-    panic("Too many blocks attempted");
-    while (true);
+  if (nblks > kWiiSDHCMaxTransferBlocks) {
+    WIISYSLOG("Too many blocks %u attempted", nblks);
+    return kIOReturnUnsupported;
   }
 
   if ((buffer->getDirection() != kIODirectionIn) && (buffer->getDirection() != kIODirectionOut)) {
