@@ -334,7 +334,7 @@ typedef enum {
 #define kSDHCResponseTypeMask     0x1B
 
 
-#pragma pack(push, 1)
+#pragma pack(1)
 
 //
 // SD CID register struct order-swapped for big endian.
@@ -452,6 +452,6 @@ typedef struct {
 } SDCSDRegisterV2;
 OSCompileAssert(sizeof (SDCSDRegisterV2) == 16);
 
-#pragma pack(pop)
+#pragma pack()
 
 #endif
