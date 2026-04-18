@@ -118,7 +118,11 @@ bool HollywoodInterruptController::start(IOService *provider) {
 // Gets the address of the primary interrupt handler for this controller.
 //
 IOInterruptAction HollywoodInterruptController::getInterruptHandlerAddress(void) {
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_2
   return OSMemberFunctionCast(IOInterruptAction, this, &HollywoodInterruptController::handleInterrupt);
+#else
+  return (IOInterruptAction) &HollywoodInterruptController::handleInterrupt;
+#endif
 }
 
 //

@@ -138,7 +138,13 @@ void WiiCPU::initCPU(bool boot) {
     //
     // Register and enable IPIs.
     //
-	  cpuNub->registerInterrupt(0, this, OSMemberFunctionCast(IOInterruptAction, this, &WiiCPU::ipiHandler), 0);
+	  cpuNub->registerInterrupt(0, this,
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_2
+      OSMemberFunctionCast(IOInterruptAction, this, &WiiCPU::ipiHandler),
+#else
+      (IOInterruptAction) &WiiCPU::ipiHandler,
+#endif
+      0);
     cpuNub->enableInterrupt(0);
   }
   else

@@ -47,7 +47,7 @@ bool WiiPE::start(IOService *provider) {
 
   isCafe = checkPlatformCafe();
   WIIDBGLOG("Initializing %s platform expert", isCafe ? "Wii U" : "Wii");
-  WIIDBGLOG("PowerPC PVR: 0x%X", getProcessorPVR());
+  WIIDBGLOG("PowerPC PVR: 0x%x", getProcessorPVR());
 
   //
   // Get the kernel header and resolve required non-exported functions.
@@ -72,7 +72,7 @@ bool WiiPE::start(IOService *provider) {
     }
 
     mem2Addr = (UInt32 *) mem2Data->getBytesNoCopy();
-    WIIDBGLOG("MEM2 buffer: 0x%X, length: 0x%X", mem2Addr[0], mem2Addr[1]);
+    WIIDBGLOG("MEM2 buffer: 0x%x, length: 0x%x", mem2Addr[0], mem2Addr[1]);
 
     _mem2Allocator = IORangeAllocator::withRange(0, 0, 0, IORangeAllocator::kLocking);
     if (_mem2Allocator == NULL) {
