@@ -81,14 +81,12 @@ typedef struct {
 //
 // Command response (128 bits).
 //
-typedef struct {
-  union {
-    UInt32 data[4];
-    struct {
-      UInt32 padding[3];
-      UInt32 r1;
-    };
-  };
+typedef union {
+  UInt32 data[4];
+  struct {
+    UInt32 padding[3];
+    UInt32 r1;
+  } u;
 } SDCommandResponse;
 
 //

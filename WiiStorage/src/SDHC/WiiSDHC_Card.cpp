@@ -228,7 +228,7 @@ IOReturn WiiSDHC::resetCard(void) {
       return status;
     }
 
-    if (sdResponse.r1 & kSDOCRCardBusy) {
+    if (sdResponse.u.r1 & kSDOCRCardBusy) {
       break;
     }
 
@@ -244,13 +244,13 @@ IOReturn WiiSDHC::resetCard(void) {
   //
   // If card is still not ready, abort.
   //
-  if (!(sdResponse.r1 & kSDOCRCardBusy)) {
+  if (!(sdResponse.u.r1 & kSDOCRCardBusy)) {
     WIISYSLOG("Timed out initializing card");
     return kIOReturnTimeout;
   }
-  _isCardHighCapacity = sdResponse.r1 & kSDOCRCCSHighCapacity;
+  _isCardHighCapacity = sdResponse.u.r1 & kSDOCRCCSHighCapacity;
 
-  WIIDBGLOG("Got SD card, OCR: 0x%X", sdResponse.r1);
+  WIIDBGLOG("Got SD card, OCR: 0x%X", sdResponse.u.r1);
 
   //
   // Get CID from card.
@@ -268,7 +268,7 @@ IOReturn WiiSDHC::resetCard(void) {
     if (status != kIOReturnSuccess) {
         return status;
     }
-    _cardAddress = sdResponse.r1 >> kSDRelativeAddressShift;
+    _cardAddress = sdResponse.u.r1 >> kSDRelativeAddressShift;
   }
 
   WIIDBGLOG("Card @ 0x%X has CID of 0x%08X%08X%08X%08X", _cardAddress,
