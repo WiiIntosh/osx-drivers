@@ -322,7 +322,7 @@ void WiiSDHC::doAsyncIO(UInt32 intStatus) {
       response->data[2] = readReg32(kSDHCRegResponse1);
       response->data[1] = readReg32(kSDHCRegResponse2);
       response->data[0] = readReg32(kSDHCRegResponse3);
-      WIIDBGLOG("Card status: 0x%X", response->r1);
+      WIIDBGLOG("Card status: 0x%X", response->u.r1);
 
       //
       // Command is done if no data.
