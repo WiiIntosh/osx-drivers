@@ -151,8 +151,13 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
   // Create interrupt.
   //
   _interruptEventSource = IOFilterInterruptEventSource::filterInterruptEventSource(this,
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_2
     OSMemberFunctionCast(IOFilterInterruptEventSource::Action, this, &WiiOHCI::handleInterrupt),
     OSMemberFunctionCast(IOFilterInterruptEventSource::Filter, this, &WiiOHCI::filterInterrupt),
+#else
+    (IOFilterInterruptEventSource::Action) &WiiOHCI::handleInterrupt,
+    (IOFilterInterruptEventSource::Filter) &WiiOHCI::filterInterrupt,
+#endif
     provider, 0);
   if (_interruptEventSource == NULL) {
     WIISYSLOG("Failed to create interrupt");
@@ -298,7 +303,12 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
   }
 
   _isoInTimerEventSource = IOTimerEventSource::timerEventSource(this,
-    OSMemberFunctionCast(IOTimerEventSource::Action, this, &WiiOHCI::handleIsoInTimer));
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_2
+    OSMemberFunctionCast(IOTimerEventSource::Action, this, &WiiOHCI::handleIsoInTimer)
+#else
+    (IOTimerEventSource::Action) &WiiOHCI::handleIsoInTimer
+#endif
+  );
   if (_isoInTimerEventSource == NULL) {
     return kIOReturnNoMemory;
   }
@@ -315,7 +325,12 @@ IOReturn WiiOHCI::UIMInitialize(IOService *provider) {
   }
 
   _isoOutTimerEventSource = IOTimerEventSource::timerEventSource(this,
-    OSMemberFunctionCast(IOTimerEventSource::Action, this, &WiiOHCI::handleIsoOutTimer));
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_2
+    OSMemberFunctionCast(IOTimerEventSource::Action, this, &WiiOHCI::handleIsoOutTimer)
+#else
+    (IOTimerEventSource::Action) &WiiOHCI::handleIsoOutTimer
+#endif
+  );
   if (_isoOutTimerEventSource == NULL) {
     return kIOReturnNoMemory;
   }
