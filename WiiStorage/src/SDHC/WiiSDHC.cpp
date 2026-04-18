@@ -97,7 +97,11 @@ bool WiiSDHC::start(IOService *provider) {
   _commandGate->enable();
 
   _interruptEventSource = IOInterruptEventSource::interruptEventSource(this,
-    OSMemberFunctionCast(IOInterruptEventSource::Action, this, &WiiSDHC::handleInterrupt),
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_2
+  OSMemberFunctionCast(IOInterruptEventSource::Action, this, &WiiSDHC::handleInterrupt),
+#else
+  (IOInterruptEventSource::Action) &WiiSDHC::handleInterrupt,
+#endif
     provider, 0);
   if (_interruptEventSource == NULL) {
     WIISYSLOG("Failed to create interrupt");
