@@ -30,8 +30,11 @@ IOReturn WiiSDHC::sendCommand(UInt8 commandIndex, UInt8 responseType, UInt32 arg
   sdCommand->setBufferOffset(bufferOffset);
   sdCommand->setBlockCount(blockCount);
 
-  syncer = IOSyncer::create();
-  sdCommand->syncer = syncer;
+  syncer = sdCommand->createSyncer();
+  if (syncer == NULL) {
+    sdCommand->release();
+    return kIOReturnNoResources;
+  }
 
   WIIDBGLOG("Sync command: 0x%X, rspType: 0x%X, arg: 0x%X", commandIndex, responseType, argument);
   status = executeCommand(sdCommand);

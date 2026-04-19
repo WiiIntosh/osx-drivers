@@ -13,7 +13,6 @@ OSDefineMetaClassAndStructors(WiiSDCommand, super);
 // Zero out command data prior to re-use.
 //
 void WiiSDCommand::zeroCommand(void) {
-  syncer                = NULL;
   state                 = kWiiSDCommandStateInitial;
 
   _commandIndex         = 0;
@@ -26,20 +25,32 @@ void WiiSDCommand::zeroCommand(void) {
   _actualByteCount      = 0;
   _callbackAction       = NULL;
   _callbackOwner        = NULL;
+  _syncer               = NULL;
 
   bzero(&_response, sizeof (_response));
   bzero(&_storageCompletion, sizeof (_storageCompletion));
 }
 
 //
+// Creates an IOSyncer for synchronous operation.
+//
+IOSyncer *WiiSDCommand::createSyncer(void) {
+  _syncer = IOSyncer::create();
+  return _syncer;
+}
+
+//
 // Execute command callback.
 //
 void WiiSDCommand::executeCallback(void) {
+  IOSyncer *syncer;
+
   if (_callbackAction != NULL) {
     (_callbackAction)(_callbackOwner, this);
-  } else if (syncer != NULL) {
+  } else if (_syncer != NULL) {
+    syncer = _syncer;
+    _syncer = NULL;
     syncer->signal();
-    syncer = NULL;
 	}
 }
 

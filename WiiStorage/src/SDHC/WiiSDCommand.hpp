@@ -53,11 +53,9 @@ private:
   Action              _callbackAction;
   OSObject            *_callbackOwner;
   IOStorageCompletion _storageCompletion;
+  IOSyncer            *_syncer;
 
 public:
-  // Used to call command synchronously.
-  IOSyncer *syncer;
-
   // Used to queue commands.
   queue_chain_t	queueChain;
 
@@ -71,6 +69,7 @@ public:
   // Command functions.
   //
   void zeroCommand(void);
+  IOSyncer *createSyncer(void);
   void executeCallback(void);
 
   //
