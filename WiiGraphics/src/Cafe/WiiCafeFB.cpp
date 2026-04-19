@@ -435,11 +435,11 @@ IOReturn WiiCafeFB::setCursorImage(void *cursorImage) {
   cursorInfo.hardwareCursorData = (UInt8*) _cursorBuffer;
 
   if (!convertCursorImage(cursorImage, &cursorDescriptor, &cursorInfo)) {
-    WIISYSLOG("Failed to convert hardware cursor image");
+    WIIDBGLOG("Failed to convert hardware cursor image");
     return kIOReturnUnsupported;
   }
   if ((cursorInfo.cursorWidth == 0) || (cursorInfo.cursorHeight == 0)) {
-    WIISYSLOG("Converted hardware cursor image is invalid size");
+    WIIDBGLOG("Converted hardware cursor image is invalid size");
     return kIOReturnUnsupported;
   }
   WIIDBGLOG("Converted hardware cursor image at %p (%ux%u)", cursorInfo.hardwareCursorData, cursorInfo.cursorWidth, cursorInfo.cursorHeight);
