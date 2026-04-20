@@ -174,8 +174,8 @@ void WiiSDHC::setStorageProperties(IOService *service) {
   //
   service->setProperty(kIOMaximumSegmentCountReadKey, 1, 64);
   service->setProperty(kIOMaximumSegmentCountWriteKey, 1, 64);
-  service->setProperty(kIOMaximumBlockCountReadKey, 8, 64);
-  service->setProperty(kIOMaximumBlockCountWriteKey, 8, 64);
+  service->setProperty(kIOMaximumBlockCountReadKey, kWiiSDHCMaxTransferBlocks, 64);
+  service->setProperty(kIOMaximumBlockCountWriteKey, kWiiSDHCMaxTransferBlocks, 64);
 }
 
 //
@@ -183,21 +183,55 @@ void WiiSDHC::setStorageProperties(IOService *service) {
 //
 IOReturn WiiSDHC::doAsyncReadWrite(IOMemoryDescriptor *buffer, UInt32 block, UInt32 nblks, IOStorageCompletion completion) {
   bool      isRead;
+  UInt32    blockOffset;
+  UInt32    blocksRemain;
+  UInt32    blocksCurrent;
   IOReturn  status;
-
-  if (nblks > kWiiSDHCMaxTransferBlocks) {
-    WIISYSLOG("Too many blocks %u attempted", nblks);
-    return kIOReturnUnsupported;
-  }
 
   if ((buffer->getDirection() != kIODirectionIn) && (buffer->getDirection() != kIODirectionOut)) {
     return kIOReturnUnsupported;
+  }
+  isRead = buffer->getDirection() == kIODirectionIn;
+
+  //
+  // Some versions of OS X seem to disregard the maximum block count for some reads and writes.
+  // Just break this up into multiple synchronous calls.
+  //
+  if (nblks > kWiiSDHCMaxTransferBlocks) {
+    status = kIOReturnSuccess;
+
+    blockOffset = 0;
+    blocksRemain = nblks;
+    while (blocksRemain > 0) {
+      if (blocksRemain > 8) {
+        blocksCurrent = 8;
+      } else {
+        blocksCurrent = blocksRemain;
+      }
+
+      if (blocksCurrent > 1) {
+        status = sendCommand(isRead ? kSDCommandReadMultipleBlock : kSDCommandWriteMultipleBlock, kSDHCResponseTypeR1, block + blockOffset,
+          buffer, blockOffset * kSDBlockSize, blocksCurrent);
+      } else {
+        status = sendCommand(isRead ? kSDCommandReadSingleBlock : kSDCommandWriteSingleBlock, kSDHCResponseTypeR1, block + blockOffset,
+          buffer, blockOffset * kSDBlockSize, 1);
+      }
+
+      if (status != kIOReturnSuccess) {
+        break;
+      }
+
+      blockOffset += blocksCurrent;
+      blocksRemain -= blocksCurrent;
+    }
+
+    (completion.action)(completion.target, completion.parameter, status, nblks * kSDBlockSize);
+    return status;
   }
 
   //
   // Submit the async command.
   //
-  isRead = buffer->getDirection() == kIODirectionIn;
   if (nblks > 1) {
     status = sendCommandAsync(isRead ? kSDCommandReadMultipleBlock : kSDCommandWriteMultipleBlock, kSDHCResponseTypeR1, block, buffer, nblks, completion);
   } else {
@@ -258,7 +292,7 @@ IOReturn WiiSDHC::reportBlockSize(UInt64 *blockSize) {
 // Reports the maximum amount of data that can be read in a single I/O operation.
 //
 IOReturn WiiSDHC::reportMaxReadTransfer(UInt64 blockSize, UInt64 *max) {
-  *max = kWiiSDHCMaxTransferBlocks * 512;
+  *max = kWiiSDHCMaxTransferBlocks * kSDBlockSize;
   return kIOReturnSuccess;
 }
 
@@ -268,7 +302,7 @@ IOReturn WiiSDHC::reportMaxReadTransfer(UInt64 blockSize, UInt64 *max) {
 // Reports the maximum amount of data that can be written in a single I/O operation.
 //
 IOReturn WiiSDHC::reportMaxWriteTransfer(UInt64 blockSize, UInt64 *max) {
-  *max = kWiiSDHCMaxTransferBlocks * 512;
+  *max = kWiiSDHCMaxTransferBlocks * kSDBlockSize;
   return kIOReturnSuccess;
 }
 
