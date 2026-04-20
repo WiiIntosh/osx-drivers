@@ -14,11 +14,15 @@ OSDefineMetaClassAndStructors(WiiIPC, super);
 static WiiIPC *gWiiIPC;
 
 // Power off system.
-#define CMD_POWEROFF  0xCAFE0001
+#define CMD_POWEROFF    0xCAFE0001
 // Reboot.
-#define CMD_REBOOT    0xCAFE0002
+#define CMD_REBOOT      0xCAFE0002
 // Get RTC bias (Cafe only).
-#define CMD_RTC_BIAS  0xCAFE0003
+#define CMD_RTC_BIAS    0xCAFE0003
+// Start FB (RVL only).
+#define CMD_START_FB    0xCAFE0010
+// Stop FB (RVL only).
+#define CMD_STOP_FB     0xCAFE0011
 // Print (Cafe only).
 #define CMD_PRINT       0xCAFE6400
 #define CMD_PRINT_MASK  0xFFFFFF00
@@ -84,6 +88,16 @@ IOReturn WiiIPC::callPlatformFunction(const OSSymbol *functionName, bool waitFor
     return kIOReturnSuccess;
   } else if (functionName->isEqualTo(kWiiFuncIPCCafeLog)) {
     doLog((const char *) param1);
+    return kIOReturnSuccess;
+  } else if (functionName->isEqualTo(kWiiFuncIPCRvlStartFB)) {
+    writeReg32(kWiiIPCPPCMSG, CMD_START_FB);
+    writeReg32(kWiiIPCPPCCTRL, 0x1);
+    while (readReg32(kWiiIPCPPCCTRL) & 0x1);
+    return kIOReturnSuccess;
+  } else if (functionName->isEqualTo(kWiiFuncIPCRvlStopFB)) {
+    writeReg32(kWiiIPCPPCMSG, CMD_STOP_FB);
+    writeReg32(kWiiIPCPPCCTRL, 0x1);
+    while (readReg32(kWiiIPCPPCCTRL) & 0x1);
     return kIOReturnSuccess;
   }
 
