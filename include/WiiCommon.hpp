@@ -197,9 +197,9 @@ inline void logPrint(const char *className, const char *locationName, const char
 //
 // Common logging macros to inject function name.
 //
-#define WIIDBGLOG(str, ...)     WIIDBGLOG_PRINT(__FUNCTION__, str, ## __VA_ARGS__)
-#define WIIDATADBGLOG(str, ...) WIIDATADBGLOG_PRINT(__FUNCTION__, str, ## __VA_ARGS__)
-#define WIISYSLOG(str, ...)     WIISYSLOG_PRINT(__FUNCTION__, str, ## __VA_ARGS__)
+#define WIIDBGLOG(str, args...)     WIIDBGLOG_PRINT(__FUNCTION__, str, ##args)
+#define WIIDATADBGLOG(str, args...) WIIDATADBGLOG_PRINT(__FUNCTION__, str, ##args)
+#define WIISYSLOG(str, args...)     WIISYSLOG_PRINT(__FUNCTION__, str, ##args)
 
 #else
 
