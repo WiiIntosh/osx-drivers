@@ -65,6 +65,8 @@
 #define kWiiFuncPlatformGetMem2Allocator    "PlatformGetMem2Allocator"
 #define kWiiFuncIPCGetRTCBias               "IPCGetRTCBias"
 #define kWiiFuncIPCCafeLog                  "IPCCafeLog"
+#define kWiiFuncIPCRvlStartFB               "IPCRvlStartFB"
+#define kWiiFuncIPCRvlStopFB                "IPCRvlStopFB"
 
 //
 // Major kernel version exported from XNU.
