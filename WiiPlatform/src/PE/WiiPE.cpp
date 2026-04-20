@@ -33,9 +33,11 @@ bool WiiPE::init(OSDictionary *dictionary) {
 // Overrides IODTPlatformExpert::start().
 //
 bool WiiPE::start(IOService *provider) {
-  bool    isCafe;
-  OSData  *mem2Data;
-  UInt32  *mem2Addr;
+  IOService       *service;
+  IOPMrootDomain  *pmRootDomain;
+  bool            isCafe;
+  OSData          *mem2Data;
+  UInt32          *mem2Addr;
 
   setChipSetType(kChipSetTypeMol);
   setMachineType(kMolStdMachineType);
@@ -95,7 +97,11 @@ bool WiiPE::start(IOService *provider) {
   //
   // Prevent sleep/doze, Wii hardware is incapable of sleeping but unsure of doze. Seems to cause issues on Wii U and the GPU.
   //
-  getPMRootDomain()->receivePowerNotification(kIOPMPreventSleep);
+  service = waitForService(serviceMatching("IOPMrootDomain"));
+  pmRootDomain = OSDynamicCast(IOPMrootDomain, service);
+  if (pmRootDomain != NULL) {
+    pmRootDomain->receivePowerNotification(kIOPMPreventSleep);
+  }
 
   WIIDBGLOG("Initialized platform expert");
   return true;
