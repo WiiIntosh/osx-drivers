@@ -1191,6 +1191,7 @@ void WiiOHCI::UIMRootHubStatusChange(bool abort) {
 WIIDBGLOG("start");
 }
 
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_1
 //
 // Overrides IOUSBController::UIMCreateControlTransfer() (void* version).
 //
@@ -1222,6 +1223,7 @@ IOReturn WiiOHCI::UIMCreateControlTransfer(short functionNumber, short endpointN
                                            IOMemoryDescriptor *CBP, bool bufferRounding, UInt32 bufferSize, short direction) {
   return UIMCreateControlTransfer(functionNumber, endpointNumber, command->GetUSLCompletion(), CBP, bufferRounding, bufferSize, direction);
 }
+#endif
 
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_3
 //

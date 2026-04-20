@@ -305,10 +305,12 @@ protected:
   //
   // Version-specific overrides.
   //
+#if __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_1
   IOReturn UIMCreateControlTransfer(short functionNumber, short endpointNumber, IOUSBCommand* command,
                                     void *CBP, bool bufferRounding, UInt32 bufferSize, short direction);
   IOReturn UIMCreateControlTransfer(short functionNumber, short endpointNumber, IOUSBCommand* command,
                                     IOMemoryDescriptor *CBP, bool bufferRounding, UInt32 bufferSize, short direction);
+#endif
 #if __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_3
   IOReturn UIMCreateIsochTransfer(short functionAddress, short endpointNumber, IOUSBIsocCompletion completion,
                                   UInt8 direction, UInt64 frameStart, IOMemoryDescriptor *pBuffer, UInt32 frameCount,
