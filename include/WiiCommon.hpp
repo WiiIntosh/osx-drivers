@@ -147,19 +147,21 @@ inline void logPrint(const char *className, const char *locationName, const char
     IOLog("%s::%s(): %s\n", className, funcName, tmp);
   }
 
-  mach_timespec_t  t;
-  t.tv_sec = 2;
-  t.tv_nsec = 0;
+  if (checkPlatformCafe()) {
+    mach_timespec_t  t;
+    t.tv_sec = 2;
+    t.tv_nsec = 0;
 
-  IOService *ipcService = IOService::waitForService(IOService::nameMatching("WiiIPC"), &t);
-  if (ipcService != NULL) {
-    char msg[256];
-    if (locationName != NULL) {
-      snprintf(msg, sizeof (msg), "%s[%s]::%s(): %s\n", className, locationName, funcName, tmp);
-    } else {
-      snprintf(msg, sizeof (msg), "%s::%s(): %s\n", className, funcName, tmp);
+    IOService *ipcService = IOService::waitForService(IOService::nameMatching("WiiIPC"), &t);
+    if (ipcService != NULL) {
+      char msg[256];
+      if (locationName != NULL) {
+        snprintf(msg, sizeof (msg), "%s[%s]::%s(): %s\n", className, locationName, funcName, tmp);
+      } else {
+        snprintf(msg, sizeof (msg), "%s::%s(): %s\n", className, funcName, tmp);
+      }
+      ipcService->callPlatformFunction(kWiiFuncIPCCafeLog, true, (void*) msg, NULL, NULL, NULL);
     }
-    ipcService->callPlatformFunction(kWiiFuncIPCCafeLog, true, (void*) msg, NULL, NULL, NULL);
   }
 }
 
