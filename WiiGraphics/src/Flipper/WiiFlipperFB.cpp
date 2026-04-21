@@ -17,8 +17,6 @@ OSDefineMetaClassAndStructors(WiiFlipperFB, super);
 bool WiiFlipperFB::init(OSDictionary *dictionary) {
   WiiCheckDebugArgs();
 
-  _debugEnabled = true;
-
   _memoryMap    = NULL;
   _baseAddr     = NULL;
   _fbMemory     = NULL;
