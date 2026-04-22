@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    name: Build
+    name: Build jaguar, panther, tiger
     runs-on: ubuntu-latest
 
     steps:
@@ -37,7 +37,10 @@ jobs:
           cd ..
 
       - name: Build drivers
-        run: make
+        run: |
+          make OSX_VERSION=jaguar && make kext OSX_VERSION=jaguar
+          make OSX_VERSION=panther && make kext OSX_VERSION=panther
+          make OSX_VERSION=tiger && make kext OSX_VERSION=tiger
 
       - name: Upload to Artifacts
         uses: actions/upload-artifact@v7

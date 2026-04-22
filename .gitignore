@@ -2,9 +2,9 @@
 DerivedData
 xcuserdata
 project.xcworkspace
-build
-build_kext
-/build_pkg
+build*
+build_kext*
+/build_pkg*
 xcshareddata
 MacPPCKernelSDK
 /*.mkext
