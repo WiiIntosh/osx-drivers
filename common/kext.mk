@@ -42,15 +42,23 @@ CXXFLAGS	+=	-fapple-kext
 endif
 
 ifeq ($(OSX_VERSION),cheetah)
-CFLAGS		-D__MAC_OS_X_VERSION_MIN_REQUIRED=1000
-else ifeq ($(OSX_VERSION),puma)
-CFLAGS		-D__MAC_OS_X_VERSION_MIN_REQUIRED=1010
-else ifeq ($(OSX_VERSION),jaguar)
+CFLAGS		+=	-D__MAC_OS_X_VERSION_MIN_REQUIRED=1000
+else
+ifeq ($(OSX_VERSION),puma)
+CFLAGS		+=	-D__MAC_OS_X_VERSION_MIN_REQUIRED=1010
+else
+ifeq ($(OSX_VERSION),jaguar)
 CFLAGS		+=	-mmacosx-version-min=10.2
-else ifeq ($(OSX_VERSION),panther)
+else
+ifeq ($(OSX_VERSION),panther)
 CFLAGS		+=	-mmacosx-version-min=10.3
-else ifeq ($(OSX_VERSION),tiger)
+else
+ifeq ($(OSX_VERSION),tiger)
 CFLAGS		+=	-mmacosx-version-min=10.4
+endif
+endif
+endif
+endif
 endif
 
 #
