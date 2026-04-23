@@ -69,8 +69,14 @@ jobs:
           repository: Wiintosh/puma-ci
           token: ${{ secrets.PUMA_CI }}
           fetch-depth: 1
-          lfs: true
           path: puma-ci
+
+      - name: CI image prep
+        uses: robinraju/release-downloader@v1
+        with:
+          repository: Wiintosh/puma-ci
+          token: ${{ secrets.PUMA_CI }}
+          fileName: 'panther_ci_compressed.qcow2'
 
       - name: Prep build
         run: ./puma-ci/pre-build.sh
