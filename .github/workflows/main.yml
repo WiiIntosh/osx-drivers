@@ -25,8 +25,25 @@ jobs:
           repository: Wiintosh/powerpc-kext-ci
           token: ${{ secrets.POWERPC_KEXT_CI }}
           fetch-depth: 1
-          lfs: true
           path: powerpc-kext-ci
+
+      - name: Xcode3 bootstrap
+        uses: robinraju/release-downloader@v1
+        with:
+          repository: Wiintosh/powerpc-kext-ci
+          tag: 'xcode3'
+          token: ${{ secrets.POWERPC_KEXT_CI }}
+          fileName: '*.tar.gz'
+          out-file-path: 'powerpc-kext-ci/xcode-gcc'
+
+      - name: Darling bootstrap
+        uses: robinraju/release-downloader@v1
+        with:
+          repository: Wiintosh/powerpc-kext-ci
+          tag: 'darling-20250318'
+          token: ${{ secrets.POWERPC_KEXT_CI }}
+          fileName: '*.deb'
+          out-file-path: 'powerpc-kext-ci/darling'
 
       - name: CI bootstrap
         run: |
