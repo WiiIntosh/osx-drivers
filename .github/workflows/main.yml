@@ -84,7 +84,7 @@ jobs:
           path: osx-drivers/MacPPCKernelSDK
 
       - name: Move repo
-        run: sudo mv osx-drivers /Volumes/WiintoshBuild/
+        run: mv osx-drivers /Volumes/WiintoshBuild/
 
       - name: Run build
         run: |
