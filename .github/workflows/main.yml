@@ -101,7 +101,7 @@ jobs:
 
       - name: Build drivers
         run: |
-          python3 -m pip install pylzss
+          python3 -m pip install lzss-python --break-system-packages
           cd /Volumes/WiintoshBuild/osx-drivers
           make package OSX_VERSION=cheetah
           make package OSX_VERSION=puma
