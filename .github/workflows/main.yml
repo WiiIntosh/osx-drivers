@@ -77,16 +77,19 @@ jobs:
 
       - uses: actions/checkout@v5
         with:
-          path: build_img/osx-drivers
+          path: osx-drivers
       - uses: actions/checkout@v5
         with:
           repository: Goldfish64/MacPPCKernelSDK
-          path: build_img/MacPPCKernelSDK
+          path: osx-drivers/MacPPCKernelSDK
+
+      - name: Move repo
+        run: mv osx-drivers /Volumes/WiintoshBuild/osx-drivers
 
       - name: Run build
         run: |
-          cp ./puma-ci/build.command build_img/
-          chmod +x build_img/build.command
+          cp ./puma-ci/build.command /Volumes/WiintoshBuild/
+          chmod +x /Volumes/WiintoshBuild/build.command
           ./puma-ci/run-build.sh
 
       - name: Build drivers
