@@ -75,6 +75,7 @@ jobs:
         uses: robinraju/release-downloader@v1
         with:
           repository: Wiintosh/puma-ci
+          latest: true
           token: ${{ secrets.PUMA_CI }}
           fileName: 'panther_ci_compressed.qcow2'
 
