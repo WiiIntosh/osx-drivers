@@ -8,7 +8,7 @@ on:
     types: [published]
 
 jobs:
-  build:
+  build-jaguar-panther-tiger:
     name: Build jaguar, panther, tiger
     runs-on: ubuntu-latest
 
@@ -54,6 +54,59 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: ./*.zip
+          tag: ${{ github.ref }}
+          overwrite: true
+          file_glob: true
+
+  build-cheetah-puma:
+    name: Build cheetah, puma
+    runs-on: macos-latest
+
+    steps:
+      - name: CI bootstrap prep
+        uses: actions/checkout@v5
+        with:
+          repository: Wiintosh/puma-ci
+          token: ${{ secrets.PUMA_CI }}
+          fetch-depth: 1
+          lfs: true
+          path: puma-ci
+
+      - name: Prep build
+        run: ./puma-ci/pre-build.sh
+
+      - uses: actions/checkout@v5
+        with:
+          path: /Volumes/WiintoshBuild/osx-drivers
+      - uses: actions/checkout@v5
+        with:
+          repository: Goldfish64/MacPPCKernelSDK
+          path: /Volumes/WiintoshBuild/MacPPCKernelSDK
+
+      - name: Run build
+        run: |
+          cp ./puma-ci/build.command /Volumes/WiintoshBuild/
+          chmod +x /Volumes/WiintoshBuild/build.command
+          ./puma-ci/run-build.sh
+
+      - name: Build drivers
+        run: |
+          cd /Volumes/WiintoshBuild/osx-drivers
+          make package OSX_VERSION=cheetah
+          make package OSX_VERSION=puma
+
+      - name: Upload to Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: Artifacts
+          path: /Volumes/WiintoshBuild/osx-drivers/*.zip
+
+      - name: Upload to Releases
+        if: github.event_name == 'release'
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: /Volumes/WiintoshBuild/osx-drivers/*.zip
           tag: ${{ github.ref }}
           overwrite: true
           file_glob: true
