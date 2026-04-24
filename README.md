@@ -5,7 +5,7 @@
 
 Wii and Wii U support kernel extensions for Mac OS X as part of [Wiintosh](https://github.com/Wiintosh).
 
-Built for all PowerPC G3 supported versions of Mac OS X (10.0 - 10.41).
+Built for all PowerPC G3 supported versions of Mac OS X (10.0 - 10.4).
 
 ### Extensions
 * WiiAudio: audio support
