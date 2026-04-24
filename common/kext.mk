@@ -51,10 +51,10 @@ ifeq ($(OSX_VERSION),jaguar)
 CFLAGS		+=	-mmacosx-version-min=10.2
 else
 ifeq ($(OSX_VERSION),panther)
-CFLAGS		+=	-mmacosx-version-min=10.3
+CFLAGS		+=	-mmacosx-version-min=10.2
 else
 ifeq ($(OSX_VERSION),tiger)
-CFLAGS		+=	-mmacosx-version-min=10.4
+CFLAGS		+=	-mmacosx-version-min=10.2
 endif
 endif
 endif
