@@ -432,8 +432,8 @@ void WiiOHCI::completeGeneralTransfer(OHCITransferData *transfer) {
       USBToHostLong(buf[4]), USBToHostLong(buf[5]), USBToHostLong(buf[6]), USBToHostLong(buf[7]));
   }
 
-  if (tdStatus != kIOReturnSuccess) {
-    WIISYSLOG("Got an error here: 0x%X", tdStatus);
+  if (tdStatus != kIOReturnSuccess && tdStatus != kIOReturnUnderrun) {
+    WIIDBGLOG("GenTD failed status: 0x%X, ep flags 0x%X, last %u", tdStatus, USBToHostLong(transfer->endpoint->ed->flags), transfer->last);
   }
 
   //
@@ -633,7 +633,7 @@ void WiiOHCI::completeTransferQueue(OHCITransferData *headTransfer) {
     } else {
       completeGeneralTransfer(currTransfer);
     }
-    
+
     nextTransfer = currTransfer->nextTransfer;
     returnTransfer(currTransfer);
     currTransfer = nextTransfer;

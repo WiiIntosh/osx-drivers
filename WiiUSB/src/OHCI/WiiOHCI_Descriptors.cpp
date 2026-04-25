@@ -783,16 +783,22 @@ void WiiOHCI::completeFailedEndpointGenTransfers(OHCIEndpointData *endpoint, IOR
     if (transferCurr->last) {
       //
       // For underruns, just pretend it didn't occur.
+      // Underruns may occur normally on bulk endpoints.
       //
       if (tdStatus == kIOReturnUnderrun) {
         endpoint->ed->headTDPhysAddr &= ~(HostToUSBLong(kOHCIEDTDHeadHalted));
         tdStatus = kIOReturnSuccess;
       }
 
-      WIIDBGLOG("Completing failed transfer with %u bytes remaining", bufferSizeRemaining);
+      if (tdStatus != kIOReturnSuccess) {
+        WIIDBGLOG("Completing failed transfer with %u bytes remaining", bufferSizeRemaining);
+      }
       endpoint->ed->flags &= ~(HostToUSBLong(kOHCIEDFlagsSkip));
       Complete(transferCurr->genCompletion, tdStatus, bufferSizeRemaining);
       returnTransfer(transferCurr);
+      if (tdStatus != kIOReturnSuccess) {
+        WIIDBGLOG("Completed failed transfer with %u bytes remaining", bufferSizeRemaining);
+      }
       return;
     }
 
